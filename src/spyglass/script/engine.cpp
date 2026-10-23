@@ -734,12 +734,12 @@ export let World;
 
           const playerHeadRotation = reader.float32();
           this.playerheadRot = playerHeadRotation;
-          const bits = reader.bitset(65, "list");
+          const bits = reader.bitset(66, "list");
           const inputData = {};
           Object.entries(inputDatas).forEach(([k, v]) => {
             inputData[v] = ((bits >> BigInt(parseInt(k))) & 1n) === 1n;
           });
-          // console.log(inputData);
+          this.inputData = inputData;
         },
         { direction: "c2s" },
       );
@@ -748,6 +748,18 @@ export let World;
       //#region Request
       this.requestTail = null;
       this.waiting = [];
+      packet.subscribe(
+        Packets.commandRequestPacket,
+        (pkt, ctx) => {
+          const reader = new BinaryReader(ctx.body);
+          reader.string();
+          this.requestTail = reader.bytes(reader.remaining);
+          for (const line of this.waiting.splice(0)) {
+            this.sendCommand(line);
+          }
+        },
+        { direction: "c2s" },
+      );
       //#endregion
       //#region eventFunctions
       this.event_Click = (ev) => {};
@@ -770,21 +782,18 @@ export let World;
             "criticalHit",
             "MagicCriticalHit",
           ][reader.uint8()]; // uint8
-          let targetActor = reader.varint64();
-          if (targetActor < 0n) {
-            targetActor += 1n << 64n; // 64ビットの符号なしに変換
-          }
+          const targetActor = reader.varuint64();
           const data = reader.float32();
           const swingSource = reader.string();
           const hand = ["mainhand", "offhand"][reader.uint8()];
           //#region action
-          if (action == "swing") {
-            if (["Mine", "Attack"].includes(swingSource)) {
-              this.event_Click({ action, swingSource, hand });
-            } else if (swingSource == "Attack") {
-              this.event_Attack({ action, swingSource, hand });
-            }
-          } else if (swingSource == "DropItem") {
+          if (action == "swing" && ["Mine", "Attack"].includes(swingSource)) {
+            this.event_Click({ action, swingSource, hand });
+          }
+          if (action == "swing" && swingSource == "Attack") {
+            this.event_Attack({ action, swingSource, hand });
+          }
+          if (swingSource == "DropItem") {
             this.event_Drop();
           } else if (swingSource == "ThrowItem") {
             this.event_Use();
@@ -799,6 +808,7 @@ export let World;
     //#region sendCommand
     sendCommand(line) {
       if (!this.requestTail) {
+        this.waiting.push(line);
         return;
       }
       const text = String(line).startsWith("/") ? String(line) : `/${line}`;
@@ -841,7 +851,7 @@ export let World;
         Packets.startGamePacket,
         (pkt, ctx, c, o) => {
           const reader = new BinaryReader(ctx.body);
-          const entityId = reader.varint64();
+          const entityId = reader.svarint64();
           const runtimeId = reader.varuint64();
           const gameType = [
             "undefined",
@@ -1227,19 +1237,18 @@ export let World;
         const reader = new BinaryReader(ctx.body);
         const action = reader.byte();
         // const entriesCount = reader.varint
-        let entriesCount = reader.varint64();
-        if (entriesCount < 0n) {
-          entriesCount += 1n << 64n;
-        }
+        const entriesCount = reader.varuint32();
         if (action == 0) {
           // remove
-          const uuid = [reader.uint64(), reader.uint64()];
-          delete this.playerList[uuid];
+          for (let i = 0; i < entriesCount; i++) {
+            const uuid = [reader.uint64(), reader.uint64()];
+            delete this.playerList[uuid];
+          }
         } else if (action == 1) {
           //add
           for (let i = 0; i < entriesCount; i++) {
             const uuid = [reader.uint64(), reader.uint64()];
-            const actorUniqueId = reader.varint64();
+            const actorUniqueId = reader.svarint64();
             const playerName = reader.string();
             const xuid = reader.string();
             const prefabid = reader.string();
