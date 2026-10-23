@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `LocalPlayer`, imported from `"spyglass"`. `new LocalPlayer()` follows the position, rotation, movement and input
+  flags of the player, calls the handlers `event_Click`, `event_Attack`, `event_Drop`, `event_Use` and
+  `event_RightClick`, and has `sendCommand` and `sendMessage`.
+- `World`, imported from `"spyglass"`. `new World()` keeps the player list, the world settings, the level, the game rules
+  and the block properties that the server sends when the player joins.
+- `!!module autocomplete` also declares `LocalPlayer`, `World` and the types they hold.
+
 ## [0.4.0] - 2026-10-23
 
 ### Added
