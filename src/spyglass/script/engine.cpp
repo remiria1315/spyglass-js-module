@@ -74,6 +74,7 @@ export class BinaryWriter {
   #bytes = [];
   byte(value) { this.#bytes.push(value & 0xff); return this; }
   bool(value) { return this.byte(value ? 1 : 0); }
+  uint8(value) { return this.byte(value); }
   uint16(value) { return this.byte(value).byte(value >> 8); }
   uint32(value) { return this.uint16(value).uint16(value >>> 16); }
   int32(value) { return this.uint32(value); }
@@ -116,6 +117,15 @@ export class BinaryWriter {
     return this.bytes(new Uint8Array(view.buffer));
   }
   svarint(value) { return this.varint(((value << 1) ^ (value >> 31)) >>> 0); }
+  varuint32(value) { return this.varint(value); }
+  varuint8(value) {
+    if (!Number.isInteger(value) || value < 0 || value > 0xff) throw new RangeError("varuint8 is 0 to 255");
+    return this.varint(value);
+  }
+  varint8(value) {
+    if (!Number.isInteger(value) || value < -128 || value > 127) throw new RangeError("varint8 is -128 to 127");
+    return this.svarint(value);
+  }
   varint64(value) {
     let rest = BigInt.asUintN(64, BigInt(value));
     while (rest >= 0x80n) {
@@ -124,6 +134,7 @@ export class BinaryWriter {
     }
     return this.byte(Number(rest));
   }
+  varuint64(value) { return this.varint64(value); }
   svarint64(value) {
     const signed = BigInt.asIntN(64, BigInt(value));
     return this.varint64((signed << 1n) ^ (signed >> 63n));
@@ -168,6 +179,7 @@ export class BinaryReader {
   }
   byte() { return this.#take(1)[0]; }
   bool() { return this.byte() !== 0; }
+  uint8() { return this.byte(); }
   uint16() { const b = this.#take(2); return b[0] | (b[1] << 8); }
   uint32() { const b = this.#take(4); return (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0; }
   int32() { return this.uint32() | 0; }
@@ -187,6 +199,17 @@ export class BinaryReader {
   int64() { const b = this.#take(8); return new DataView(b.buffer, b.byteOffset, 8).getBigInt64(0, true); }
   float64() { const b = this.#take(8); return new DataView(b.buffer, b.byteOffset, 8).getFloat64(0, true); }
   svarint() { const value = this.varint(); return (value >>> 1) ^ -(value & 1); }
+  varuint32() { return this.varint(); }
+  varuint8() {
+    const value = this.varint();
+    if (value > 0xff) throw new RangeError("varuint8 is 0 to 255");
+    return value;
+  }
+  varint8() {
+    const value = this.svarint();
+    if (value < -128 || value > 127) throw new RangeError("varint8 is -128 to 127");
+    return value;
+  }
   varint64() {
     let value = 0n;
     for (let shift = 0n; shift < 70n; shift += 7n) {
@@ -197,6 +220,7 @@ export class BinaryReader {
     throw new RangeError("varint64 is too long");
   }
   svarint64() { const value = this.varint64(); return (value >> 1n) ^ -(value & 1n); }
+  varuint64() { return this.varint64(); }
   bitset(size, encoding = "varint") {
     let value = 0n;
     if (encoding === "bytes") {
@@ -257,6 +281,7 @@ const primitive = (name) => ({ read: (reader) => reader[name](), write: (writer,
 
 export const Types = Object.freeze({
   byte: primitive("byte"),
+  uint8: primitive("uint8"),
   bool: primitive("bool"),
   int8: primitive("int8"),
   int16: primitive("int16"),
@@ -269,6 +294,10 @@ export const Types = Object.freeze({
   float64: primitive("float64"),
   varint: primitive("varint"),
   svarint: primitive("svarint"),
+  varuint8: primitive("varuint8"),
+  varint8: primitive("varint8"),
+  varuint32: primitive("varuint32"),
+  varuint64: primitive("varuint64"),
   varint64: primitive("varint64"),
   svarint64: primitive("svarint64"),
   string: primitive("string"),
@@ -646,6 +675,7 @@ export const process = Object.freeze({
 constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
   export class BinaryWriter {
     byte(value: number): this;
+    uint8(value: number): this;
     bool(value: boolean): this;
     uint16(value: number): this;
     uint32(value: number): this;
@@ -658,6 +688,10 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     uint64(value: number | bigint): this;
     float64(value: number): this;
     svarint(value: number): this;
+    varuint8(value: number): this;
+    varint8(value: number): this;
+    varuint32(value: number): this;
+    varuint64(value: number | bigint): this;
     varint64(value: number | bigint): this;
     svarint64(value: number | bigint): this;
     bitset(value: bigint, size: number, encoding?: "varint" | "bytes" | "list"): this;
@@ -669,6 +703,7 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     constructor(data: Uint8Array | ArrayBuffer);
     readonly remaining: number;
     byte(): number;
+    uint8(): number;
     bool(): boolean;
     uint16(): number;
     uint32(): number;
@@ -681,6 +716,10 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     uint64(): bigint;
     float64(): number;
     svarint(): number;
+    varuint8(): number;
+    varint8(): number;
+    varuint32(): number;
+    varuint64(): bigint;
     varint64(): bigint;
     svarint64(): bigint;
     bitset(size: number, encoding?: "varint" | "bytes" | "list"): bigint;
@@ -692,9 +731,9 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     write(writer: BinaryWriter, value: T): BinaryWriter;
   }
   export const Types: {
-    byte: Type<number>; bool: Type<boolean>; int8: Type<number>; int16: Type<number>; uint16: Type<number>;
+    byte: Type<number>; uint8: Type<number>; bool: Type<boolean>; int8: Type<number>; int16: Type<number>; uint16: Type<number>;
     int32: Type<number>; uint32: Type<number>; int64: Type<bigint>; uint64: Type<bigint>;
-    float32: Type<number>; float64: Type<number>; varint: Type<number>; svarint: Type<number>;
+    float32: Type<number>; float64: Type<number>; varint: Type<number>; svarint: Type<number>; varuint8: Type<number>; varint8: Type<number>; varuint32: Type<number>; varuint64: Type<bigint>;
     varint64: Type<bigint>; svarint64: Type<bigint>; string: Type<string>; bytes: Type<Uint8Array>; uuid: Type<string>;
     bitset(size: number, encoding?: "varint" | "bytes" | "list"): Type<bigint>;
     array<T>(item: Type<T>, length?: Type<number>): Type<T[]>;

@@ -118,9 +118,9 @@ packet.send(Packets.playerListPacket, encode(Players, players));
 
 | type | value |
 | --- | --- |
-| `byte`, `int8`, `int16`, `uint16`, `int32`, `uint32` | number |
-| `int64`, `uint64`, `varint64`, `svarint64`, `bitset(size, encoding?)` | bigint. A bitset holds bit `n` as `1n << BigInt(n)`. `encoding` is `"varint"` (the default, 7 bits per byte, the low bits first), `"bytes"` (`ceil(size / 8)` bytes, little-endian) or `"list"` (a varint count, then the index of each set bit as a `svarint`, as `PlayerAuthInputPacket` writes its Input Data). |
-| `varint`, `svarint` | number |
+| `byte`, `uint8`, `int8`, `int16`, `uint16`, `int32`, `uint32` | number. `byte` and `uint8` are the same type. |
+| `int64`, `uint64`, `varint64`, `svarint64`, `varuint64`, `bitset(size, encoding?)` | bigint. A bitset holds bit `n` as `1n << BigInt(n)`. `encoding` is `"varint"` (the default, 7 bits per byte, the low bits first), `"bytes"` (`ceil(size / 8)` bytes, little-endian) or `"list"` (a varint count, then the index of each set bit as a `svarint`, as `PlayerAuthInputPacket` writes its Input Data). |
+| `varint`, `svarint`, `varuint32`, `varuint8`, `varint8` | number. `varint` and `varuint32` are the same unsigned varint. `svarint` is a zigzag varint. `varuint8` is an unsigned varint limited to 0 to 255, and `varint8` a zigzag varint limited to -128 to 127. |
 | `float32`, `float64` | number |
 | `bool`, `string`, `uuid` | boolean, string, string such as `12345678-1234-5678-9abc-def012345678`. A uuid is two little-endian 64-bit halves, so its bytes are not in the order of the text. |
 | `bytes` | the rest of the body as a `Uint8Array` |

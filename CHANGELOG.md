@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `commands.run` sends a command to the server.
 - `commands.register` adds a command that a module handles, with completion in chat.
 - `BinaryReader.bitset(size, encoding?)`, `BinaryWriter.bitset(value, size, encoding?)` and `Types.bitset(size, encoding?)` read and write a `std::bitset` as a bigint, as a varint, as little-endian bytes or as a list of bit indices.
+- `uint8`, `varuint8`, `varint8`, `varuint32` and `varuint64` for `BinaryReader`, `BinaryWriter` and `Types`.
 - `variant` gives the short name and content of a variant field in a packet.
 - `Types`, `decode` and `encode` read and write objects, arrays, optionals and 64-bit numbers in a packet body.
 - `packet.send` sends a packet body to the server, or with `direction: "s2c"` hands one to the client as if the server had sent it.
