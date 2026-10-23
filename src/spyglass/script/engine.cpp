@@ -1133,6 +1133,8 @@ export let World;
           const multiplayerCorrelationId = reader.string();
           const enableItemStackNetManager = reader.bool();
           const serverVersion = reader.string();
+          reader.byte();
+          reader.string();
           const playerPropertyData = this.#parseTagByType(reader, 10);
           //#region fortest
 
@@ -1302,13 +1304,13 @@ export let World;
       if (t === 0) return null;
       if (t === 1) return reader.byte();
       if (t === 2) return reader.int16();
-      if (t === 3) return reader.varint();
-      if (t === 4) return reader.varint64();
+      if (t === 3) return reader.svarint();
+      if (t === 4) return reader.svarint64();
       if (t === 5) return reader.float32();
       if (t === 6) return reader.float64(); // double
       if (t === 7) {
         // ByteArray
-        const size2 = reader.varint();
+        const size2 = reader.svarint();
         const bytes = [];
         for (let j = 0; j < size2; j++) {
           bytes.push(reader.byte());
@@ -1319,7 +1321,7 @@ export let World;
       if (t === 9) {
         // ListTag
         const listType = reader.byte();
-        const size2 = reader.varint();
+        const size2 = reader.svarint();
         const listValues = [];
         for (let j = 0; j < size2; j++) {
           listValues.push(this.#parseTagByType(reader, listType));
@@ -1339,10 +1341,10 @@ export let World;
       }
       if (t === 11) {
         // IntArray (varint[])
-        const size2 = reader.varint();
+        const size2 = reader.svarint();
         const ints = [];
         for (let j = 0; j < size2; j++) {
-          ints.push(reader.varint());
+          ints.push(reader.svarint());
         }
         return ints;
       }
