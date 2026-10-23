@@ -1569,9 +1569,177 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     run(file: string, args?: string[], options?: { cwd?: string; timeout?: number }): Promise<{ code: number; output: string }>;
   };
 
-declare class remiria_util {
-  // STUB!
-}
+  export type NbtValue = null | number | bigint | string | number[] | NbtValue[] | { [name: string]: NbtValue };
+  export type Uuid = [bigint, bigint];
+  export interface Vec2 { x: number; y: number }
+  export interface Vec3 { x: number; y: number; z: number }
+  export interface InputFlags {
+    jumping: boolean; sneaking: boolean; up: boolean; down: boolean;
+    left: boolean; right: boolean; sprinting: boolean; emoting: boolean;
+  }
+  export type Hand = "mainhand" | "offhand";
+  export type AnimateAction = "noAction" | "swing" | "wakeUp" | "criticalHit" | "MagicCriticalHit";
+  export interface SwingEvent { action: "swing"; swingSource: string; hand: Hand }
+  export interface AnimationEvent { action: AnimateAction; targetActor: bigint; swingSource: string; hand: Hand }
+  export class LocalPlayer {
+    name: string;
+    pos: Vec3;
+    rot: Vec2;
+    move: Vec2;
+    playerheadRot: number;
+    inputData: InputFlags;
+    requestTail: Uint8Array | null;
+    waiting: string[];
+    event_Click: (event: SwingEvent) => void;
+    event_Attack: (event: SwingEvent) => void;
+    event_RightClick: () => void;
+    event_Drop: () => void;
+    event_Use: () => void;
+    event_Animation: (event: AnimationEvent) => void;
+    sendCommand(line: string): void;
+    sendMessage(text: string): void;
+  }
+  export interface SkinImage { width: number; height: number; data: string }
+  export interface PersonaPiece { id: string; type: string; packId: string; isDefault: boolean; productId: string }
+  export interface PersonaTintColor { paletteType: number; paletteColors: [string, string, string, string][] }
+  export interface SerializedSkin {
+    id: string;
+    resourcePatch: string;
+    imageData: SkinImage;
+    animatedImageData: {
+      skinimage: SkinImage;
+      animatedTextureType: "none" | "face" | "body32" | "body128";
+      frames: number;
+      animationExpression: "linear" | "blinking";
+    };
+    capeImageData: SkinImage;
+    geometrydata: string;
+    geometryDataMinEngineVersion: string;
+    animationData: string;
+    capeId: string;
+    fullId: string;
+    armsize: "slim" | "wide";
+    skinColor: number;
+    personaPieces: Record<number, PersonaPiece>;
+    personaTintColors: Record<number, PersonaTintColor>;
+    isPremium: boolean;
+    isPersonaCapeOnClassicSkin: boolean;
+    isPrimaryUser: boolean;
+    overridesPlayerAppearance: boolean;
+    trustedSkinFlag: string;
+    profileHash: string;
+  }
+  export interface PlayerListEntry {
+    uuid: Uuid;
+    actorUniqueId: bigint;
+    playerName: string;
+    xuid: string;
+    prefabid: string;
+    platformid: string;
+    platform: string;
+    serializedSkin: SerializedSkin;
+    isTeacher: boolean;
+    isHost: boolean;
+    isSubClient: boolean;
+    PlayerColor: number;
+  }
+  export type GameType = "undefined" | "survival" | "creative" | "adventure" | "default" | "spectator";
+  export type BroadcastSetting = "noMultiPlay" | "inviteOnly" | "friendsOnly" | "friendsOfFriends" | "public";
+  export interface GameRule { canBeModifiedByPlayer: boolean; ruleType: number; value: boolean | number | undefined }
+  export interface WorldNetwork {
+    multiplayerCorrelationId: string;
+    enableItemStackNetManager: boolean;
+    serverVersion: string;
+    serverBlockTypeRegistryChecksum: bigint;
+    serverEnabledClientSideGeneration: boolean;
+    blockNetworkIdsAreHashes: boolean;
+    networkPermissions: { serverAuthSoundenabled: boolean };
+    serverConfigurationJoinInfo: {
+      gathering: {
+        experienceId: Uuid;
+        experienceName: string;
+        worldId: Uuid | null;
+        worldName: string | null;
+        creatorId: string;
+        targetId: Uuid | null;
+        scenarioId: string | null;
+        serverId: string | null;
+      } | null;
+      clientStoreEntryPoint: { storeId: string; storeName: string } | null;
+      presence: { richPresenceId: string } | null;
+    };
+    serverTelemetryData: { serverId: string; scenarioId: string; worldId: string; ownerId: string };
+  }
+  export interface WorldSetting {
+    seed: bigint;
+    spawnSetting: { biomeType: "default" | "userDefined"; userDefinedBiomeName: string; dimension: number };
+    generatorType: "legacy" | "overworld" | "flat" | "nether" | "theend" | "void" | "undefined";
+    globalGameType: GameType;
+    isHardcore: boolean;
+    difficulty: "peaceful" | "easy" | "normal" | "hard" | "count" | "unknown";
+    defaultSpawnBlockPosition: Vec3;
+    achievementDisabled: boolean;
+    editorWorldType: "nonEditor" | "editorProject" | "editorTestLevel" | "editorRealmsUpload";
+    isCreatedInEditor: boolean;
+    isExportedFromEditor: boolean;
+    dayCycleStopTime: number;
+    educationEditionOffer: "none" | "restOfWorld" | "china_Deprecated";
+    educationFeaturesEnable: boolean;
+    educationProductId: string;
+    rainLevel: number;
+    lightningLevel: number;
+    hasConfirmedPlatformLockedContent: boolean;
+    multiplayerGameIntent: boolean;
+    LANBroadcastInitent: boolean;
+    XLBSetting: BroadcastSetting;
+    platformBroadcastSetting: BroadcastSetting;
+    commandsEnabled: boolean;
+    texturePackRequired: boolean;
+    gameRules: Record<string, GameRule>;
+    experiments: { toggles: Record<string, boolean>; experimentsEverToggled: boolean };
+    hasBonusChestEnabled: boolean;
+    startWithMapEnabled: boolean;
+    playerPermissions: "visitor" | "member" | "operator" | "custom";
+    serverChunkTickRange: number;
+    hasLockedBehaviorPack: boolean;
+    hasLockedResourcePack: boolean;
+    isFromWorldTemplate: boolean;
+    isWorldTemplateOptionLocked: boolean;
+    onlySpawnV1Villagers: boolean;
+    personaDisabled: boolean;
+    customSkinDisabled: boolean;
+    emoteChatMuted: boolean;
+    baseGameVersion: string;
+    limitedWorldWidth: number;
+    netherType: boolean;
+    eduSharedUriResource: { name: string; link: string };
+    overrideForceExperimentalGameplay: boolean | null;
+    chatRestrictionLevel: "none" | "dropped" | "disabled";
+    disablePlayerInteractions: boolean;
+    serverEditorConnectionPolicy: "matchworldtype" | "editoronly" | "vanillaonly" | "mixed";
+    allowAnonymousBlockDropsInEditorWorlds: boolean;
+    gameMode: GameType;
+    movement: { rewindHistorySize: number; serverAuthoritativeBlockBreaking: boolean };
+    network: WorldNetwork;
+  }
+  export interface WorldLevel {
+    levelid: string;
+    worldName: string;
+    templateContentIdentity: string;
+    isTrial: boolean;
+    levelCurrentTime: bigint;
+    enchantmentSeed: number;
+    worldTemplateId: Uuid;
+  }
+  export class World {
+    playerList: Record<string, PlayerListEntry>;
+    self: string | null;
+    setting: WorldSetting;
+    level: WorldLevel;
+    gamerules: Record<string, GameRule>;
+    blocks: Record<string, Record<string, NbtValue>>;
+    playerPropertyData: NbtValue;
+  }
 )ts";
 
 constexpr std::string_view kDeclarationsGlobals = R"ts(
