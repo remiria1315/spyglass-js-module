@@ -670,6 +670,760 @@ export const process = Object.freeze({
   run: (file, args = [], options = {}) =>
     native.run(String(file), args.map(String), String(options.cwd ?? ""), Math.min(Math.max(options.timeout ?? 30000, 1), 300000)),
 });
+
+
+
+// remiria's module
+
+export let LocalPlayer;
+export let World;
+{
+  //#region LocalPlayer
+  const inputDatas = {
+    6: "jumping",
+    8: "sneaking",
+    10: "up",
+    11: "down",
+    12: "left",
+    13: "right",
+    20: "sprinting",
+    38: "emoting",
+  };
+
+  LocalPlayer = class {
+    constructor() {
+      this.name = "remiria1315";
+      this.pos = { x: 0, y: 0, z: 0 };
+      this.rot = { x: 0, y: 0 };
+      this.move = { x: 0, y: 0 };
+      this.playerheadRot = 0;
+      this.inputData = {
+        jumping: false,
+        sneaking: false,
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+        sprinting: false,
+        emoting: false,
+      };
+      //#region playerAuthInput
+      packet.subscribe(
+        Packets.playerAuthInputPacket,
+        (pkt, ctx, c, o) => {
+          const reader = new BinaryReader(ctx.body);
+          const rotx = reader.float32();
+          const roty = reader.float32();
+          this.rot = { x: rotx, y: roty };
+
+          const posx = reader.float32();
+          const posy = reader.float32();
+          const posz = reader.float32();
+          this.pos = {
+            x: posx,
+            y: posy,
+            z: posz,
+          };
+
+          const movex = reader.float32();
+          const movey = reader.float32();
+          this.move = {
+            x: movex,
+            y: movey,
+          };
+
+          const playerHeadRotation = reader.float32();
+          this.playerheadRot = playerHeadRotation;
+          const bits = reader.bitset(65, "list");
+          const inputData = {};
+          Object.entries(inputDatas).forEach(([k, v]) => {
+            inputData[v] = ((bits >> BigInt(parseInt(k))) & 1n) === 1n;
+          });
+          // console.log(inputData);
+        },
+        { direction: "c2s" },
+      );
+      //#endregion
+
+      //#region Request
+      this.requestTail = null;
+      this.waiting = [];
+      //#endregion
+      //#region eventFunctions
+      this.event_Click = (ev) => {};
+      this.event_Attack = (ev) => {};
+      this.event_RightClick = () => {};
+      this.event_Drop = () => {};
+      this.event_Use = (ev) => {};
+      this.event_Animation = (ev) => {};
+      //#endregion
+      //#region eventFromAnimate
+      packet.subscribe(
+        Packets.animatePacket,
+        (pkt, ctx, c, o) => {
+          const reader = new BinaryReader(ctx.body);
+
+          const action = [
+            "noAction",
+            "swing",
+            "wakeUp",
+            "criticalHit",
+            "MagicCriticalHit",
+          ][reader.uint8()]; // uint8
+          let targetActor = reader.varint64();
+          if (targetActor < 0n) {
+            targetActor += 1n << 64n; // 64ビットの符号なしに変換
+          }
+          const data = reader.float32();
+          const swingSource = reader.string();
+          const hand = ["mainhand", "offhand"][reader.uint8()];
+          //#region action
+          if (action == "swing") {
+            if (["Mine", "Attack"].includes(swingSource)) {
+              this.event_Click({ action, swingSource, hand });
+            } else if (swingSource == "Attack") {
+              this.event_Attack({ action, swingSource, hand });
+            }
+          } else if (swingSource == "DropItem") {
+            this.event_Drop();
+          } else if (swingSource == "ThrowItem") {
+            this.event_Use();
+            this.event_RightClick();
+          }
+          this.event_Animation({ action, targetActor, swingSource, hand });
+        },
+        { direction: "c2s" },
+      );
+      //#endregion
+    }
+    //#region sendCommand
+    sendCommand(line) {
+      if (!this.requestTail) {
+        return;
+      }
+      const text = String(line).startsWith("/") ? String(line) : `/${line}`;
+      packet.send(
+        Packets.commandRequestPacket,
+        new BinaryWriter().string(text).bytes(this.requestTail).toBytes(),
+      );
+    }
+    //#region sendMessage
+    sendMessage(str) {
+      const body = new BinaryWriter()
+        .byte(0)
+        .byte(1)
+        .bool(true)
+        .string(this.name)
+        .string(str)
+        // .byte(0)
+        .string("2535456620588248")
+        .byte(0)
+        .byte(0)
+        .toBytes();
+
+      packet.send(Packets.textPacket, body, { direction: "c2s" });
+    }
+  };
+  //#endregion
+
+  //#region World
+  World = class {
+    constructor() {
+      this.playerList = {};
+      this.self = null; // uuid
+      this.setting = {};
+      this.level = {};
+      this.gamerules = {};
+      this.blocks = {};
+      this.playerPropertyData = null
+      //#region startGamePacket
+      packet.subscribe(
+        Packets.startGamePacket,
+        (pkt, ctx, c, o) => {
+          const reader = new BinaryReader(ctx.body);
+          const entityId = reader.varint64();
+          const runtimeId = reader.varuint64();
+          const gameType = [
+            "undefined",
+            "survival",
+            "creative",
+            "adventure",
+            "default",
+            "spectator",
+            "default",
+          ][reader.varint()];
+          //#region pos,rot
+          const posx = reader.float32();
+          const posy = reader.float32();
+          const posz = reader.float32();
+          const rotx = reader.float32();
+          const roty = reader.float32();
+          //#region setting
+          const setting = (() => {
+            const seed = reader.uint64();
+            const spawnSetting = {
+              biomeType: ["default", "userDefined"][reader.int16()],
+              userDefinedBiomeName: reader.string(),
+              dimension: reader.varint(),
+            };
+            const generatorType = [
+              //#region type
+              "legacy",
+              "overworld",
+              "flat",
+              "nether",
+              "theend",
+              "void",
+              "undefined",
+              //#endregion
+            ][reader.varint()];
+            const globalGameType = [
+              //#region type
+              "undefined",
+              "survival",
+              "creative",
+              "adventure",
+              "default",
+              "spectator",
+              "default",
+              //#endregion
+            ][reader.varint()];
+            const isHardcore = reader.bool();
+            const difficulty = [
+              //#region type
+              "peaceful",
+              "easy",
+              "normal",
+              "hard",
+              "count",
+              "unknown",
+              //#endregion
+            ][reader.varint()];
+            const defaultSpawnBlockPosition = {
+              x: reader.varint(),
+              y: reader.varint(),
+              z: reader.varint(),
+            };
+            const achievementDisabled = reader.bool();
+            const editorWorldType = [
+              //#region type
+              "nonEditor",
+              "editorProject",
+              "editorTestLevel",
+              "editorRealmsUpload",
+              //#endregion
+            ][reader.varint()];
+            const isCreatedInEditor = reader.bool();
+            const isExportedFromEditor = reader.bool();
+            const dayCycleStopTime = reader.varint();
+            const educationEditionOffer = [
+              //#region type
+              "none",
+              "restOfWorld",
+              "china_Deprecated",
+              //#endregion
+            ][reader.varuint32()];
+            const educationFeaturesEnable = reader.bool();
+            const educationProductId = reader.string();
+            const rainLevel = reader.float32();
+            const lightningLevel = reader.float32();
+            const hasConfirmedPlatformLockedContent = reader.bool();
+            const multiplayerGameIntent = reader.bool();
+            const LANBroadcastInitent = reader.bool();
+            const XLBSetting = [
+              //#region type
+              "noMultiPlay",
+              "inviteOnly",
+              "friendsOnly",
+              "friendsOfFriends",
+              "public",
+              //#endregion
+            ][reader.varint()];
+            const platformBroadcastSetting = [
+              //#region type
+              "noMultiPlay",
+              "inviteOnly",
+              "friendsOnly",
+              "friendsOfFriends",
+              "public",
+              //#endregion
+            ][reader.varint()];
+            const commandsEnabled = reader.bool();
+            const texturePackRequired = reader.bool();
+            const gameRules = (() => {
+              const gameRule = {};
+              const size = reader.varuint32();
+              for (let i = 0; i < size; i++) {
+                const name = reader.string();
+                const canBeModifiedByPlayer = reader.bool();
+                const ruleType = reader.varint();
+                let value;
+                switch (ruleType) {
+                  case 0:
+                    value = void reader.byte();
+                    break;
+                  case 1:
+                    value = reader.bool();
+                    break;
+                  case 2:
+                    value = reader.varint();
+                    break;
+                  case 3:
+                    value = reader.int32();
+                    break;
+                  case 4:
+                    value = reader.float32();
+                    break;
+                  default:
+                    console.log("unknown rule type");
+                    break;
+                }
+                gameRule[name] = { canBeModifiedByPlayer, ruleType, value };
+              }
+              return gameRule;
+            })();
+            const experiments = {
+              toggles: (() => {
+                const experiment = {};
+                const size = reader.varuint32();
+                for (let i = 0; i < size; i++) {
+                  const name = reader.string();
+                  const value = reader.bool();
+                  experiment[name] = value;
+                }
+                return experiment;
+              })(),
+              experimentsEverToggled: reader.bool(),
+            };
+            const hasBonusChestEnabled = reader.bool();
+            const startWithMapEnabled = reader.bool();
+            const playerPermissions = [
+              //#region type
+              "visitor",
+              "member",
+              "operator",
+              "custom",
+              //#endregion
+            ][reader.int8()];
+            const serverChunkTickRange = reader.int32();
+            const hasLockedBehaviorPack = reader.bool();
+            const hasLockedResourcePack = reader.bool();
+            const isFromWorldTemplate = reader.bool();
+            const isWorldTemplateOptionLocked = reader.bool();
+            const onlySpawnV1Villagers = reader.bool();
+            const personaDisabled = reader.bool();
+            const customSkinDisabled = reader.bool();
+            const emoteChatMuted = reader.bool();
+            const baseGameVersion = reader.string();
+            const limitedWorldWidth = reader.int32();
+            const netherType = reader.bool();
+            const eduSharedUriResource = {
+              name: reader.string(),
+              link: reader.string(),
+            };
+            const overrideForceExperimentalGameplay =
+              reader.bool() == true ? reader.bool() : null; // optional
+            const chatRestrictionLevel = ["none", "dropped", "disabled"][
+              reader.uint8()
+            ];
+            const disablePlayerInteractions = reader.bool();
+            const serverEditorConnectionPolicy = [
+              //#region type
+              "matchworldtype",
+              "editoronly",
+              "vanillaonly",
+              "mixed",
+              //#endregion
+            ][reader.varint()];
+            const allowAnonymousBlockDropsInEditorWorlds = reader.bool();
+            return {
+              //#region return
+              seed,
+              spawnSetting,
+              generatorType,
+              globalGameType,
+              isHardcore,
+              difficulty,
+              defaultSpawnBlockPosition,
+              achievementDisabled,
+              editorWorldType,
+              isCreatedInEditor,
+              isExportedFromEditor,
+              dayCycleStopTime,
+              educationEditionOffer,
+              educationFeaturesEnable,
+              educationProductId,
+              rainLevel,
+              lightningLevel,
+              hasConfirmedPlatformLockedContent,
+              multiplayerGameIntent,
+              LANBroadcastInitent,
+              XLBSetting,
+              platformBroadcastSetting,
+              commandsEnabled,
+              texturePackRequired,
+              gameRules,
+              experiments,
+              hasBonusChestEnabled,
+              startWithMapEnabled,
+              playerPermissions,
+              serverChunkTickRange,
+              hasLockedBehaviorPack,
+              hasLockedResourcePack,
+              isFromWorldTemplate,
+              isWorldTemplateOptionLocked,
+              onlySpawnV1Villagers,
+              personaDisabled,
+              customSkinDisabled,
+              emoteChatMuted,
+              baseGameVersion,
+              limitedWorldWidth,
+              netherType,
+              eduSharedUriResource,
+              overrideForceExperimentalGameplay,
+              chatRestrictionLevel,
+              disablePlayerInteractions,
+              serverEditorConnectionPolicy,
+              allowAnonymousBlockDropsInEditorWorlds,
+              //#endregion
+            };
+          })();
+          //#endregion
+
+          const levelId = reader.string();
+          const worldName = reader.string();
+          const templateContentIdentity = reader.string();
+          const isTrial = reader.bool();
+
+          const movementSettings = {
+            rewindHistorySize: reader.varint(),
+            serverAuthoritativeBlockBreaking: reader.bool(),
+          };
+          const levelCurrentTime = reader.uint64();
+          const enchantmentSeed = reader.varuint32();
+          //#region blockProperty
+          const blockProperties = (() => {
+            const size = reader.varuint32();
+            let blocks = {};
+            for (let i = 0; i < size; i++) {
+              const name = reader.string();
+              const defs = {};
+
+              const propSize = reader.varuint32();
+              for (let j = 0; j < propSize; j++) {
+                const propName = reader.string();
+                const type = reader.byte();
+                defs[propName] = this.#parseTagByType(reader, type);
+              }
+
+              blocks[name] = defs;
+            }
+            return blocks;
+          })();
+          const multiplayerCorrelationId = reader.string();
+          const enableItemStackNetManager = reader.bool();
+          const serverVersion = reader.string();
+          const playerPropertyData = this.#parseTagByType(reader, 10);
+          //#region fortest
+
+
+          this.playerPropertyData = playerPropertyData
+
+
+
+
+          //#endregion
+          const serverBlockTypeRegistryChecksum = reader.uint64();
+          const worldTemplateId = [reader.uint64(), reader.uint64()];
+          const serverEnabledClientSideGeneration = reader.bool();
+          const blockNetworkIdsAreHashes = reader.bool();
+          const networkPermissions = { serverAuthSoundenabled: reader.bool() };
+          //#region serverConfigurationJoinInfo
+          const serverConfigurationJoinInfo = {
+            // optional
+            //#region gathering
+            gathering:
+              reader.bool() == true
+                ? {
+                    // optional
+                    experienceId: [reader.uint64(), reader.uint64()],
+                    experienceName: reader.string(),
+                    worldId:
+                      reader.bool() == true
+                        ? [
+                            // optional
+                            reader.uint64(),
+                            reader.uint64(),
+                          ]
+                        : null,
+                    worldName: reader.bool() == true ? reader.string() : null, // optional
+                    creatorId: reader.string(),
+                    targetId:
+                      reader.bool() == true
+                        ? [reader.uint64(), reader.uint64()]
+                        : null, // optional
+                    scenarioId: reader.bool() == true ? reader.string() : null, // optional
+                    serverId: reader.bool() == true ? reader.string() : null, // optional
+                  }
+                : null,
+            //#region clientStoreEntryPoint
+            clientStoreEntryPoint:
+              reader.bool() == true
+                ? {
+                    // optional
+                    storeId: reader.string(),
+                    storeName: reader.string(),
+                  }
+                : null,
+            //#region presence
+            presence:
+              reader.bool() == true
+                ? {
+                    // optional
+                    richPresenceId: reader.string(), // optional
+                  }
+                : null,
+          };
+          //#region serverTelemetryData
+          const serverTelemetryData = {
+            serverId: reader.string(),
+            scenarioId: reader.string(),
+            worldId: reader.string(),
+            ownerId: reader.string(),
+          };
+
+          //#region apply
+          this.setting = setting;
+          this.setting.gameMode = gameType;
+          this.setting.movement = movementSettings;
+          this.setting.network = {
+            //#region network
+            multiplayerCorrelationId,
+            enableItemStackNetManager,
+            serverVersion,
+            serverBlockTypeRegistryChecksum,
+            serverEnabledClientSideGeneration,
+            blockNetworkIdsAreHashes,
+            networkPermissions,
+            serverConfigurationJoinInfo,
+            serverTelemetryData,
+            //#endregion
+          };
+          this.blocks = blockProperties;
+          this.level = {
+            levelid: levelId,
+            worldName,
+            templateContentIdentity,
+            isTrial,
+            levelCurrentTime,
+            enchantmentSeed,
+            worldTemplateId,
+          };
+        },
+
+        { direction: "s2c" },
+      );
+      packet.subscribe(Packets.playerListPacket, (pkt, ctx, c, o) => {
+        const reader = new BinaryReader(ctx.body);
+        const action = reader.byte();
+        // const entriesCount = reader.varint
+        let entriesCount = reader.varint64();
+        if (entriesCount < 0n) {
+          entriesCount += 1n << 64n;
+        }
+        if (action == 0) {
+          // remove
+          const uuid = [reader.uint64(), reader.uint64()];
+          delete this.playerList[uuid];
+        } else if (action == 1) {
+          //add
+          for (let i = 0; i < entriesCount; i++) {
+            const uuid = [reader.uint64(), reader.uint64()];
+            const actorUniqueId = reader.varint64();
+            const playerName = reader.string();
+            const xuid = reader.string();
+            const prefabid = reader.string();
+            const platformid = reader.string();
+            const platformNum = reader.int32();
+            const platform =
+              platformNum == -1
+                ? "unknown"
+                : [
+                    //#region enum
+                    "none(0)",
+                    "google",
+                    "ios",
+                    "osx",
+                    "amazon",
+                    "win32",
+                    "dedicated",
+                    "sony",
+                    "nintendo",
+                    "xbox",
+                    "linux",
+                    //#endregion
+                  ][platformNum];
+            const serializedSkin = this.#serializeSkin(reader);
+            const isTeacher = reader.bool();
+            const isHost = reader.bool();
+            const isSubClient = reader.bool();
+            const PlayerColor = reader.int32();
+            this.playerList[uuid] = {
+              //#region objectify
+              uuid,
+              actorUniqueId,
+              playerName,
+              xuid,
+              prefabid,
+              platformid,
+              platform,
+              serializedSkin,
+              isTeacher,
+              isHost,
+              isSubClient,
+              PlayerColor,
+              //#endregion
+            };
+          }
+        }
+      });
+    }
+    //#region parseTagByType
+    #parseTagByType(reader, t) {
+      if (t === 0) return null;
+      if (t === 1) return reader.byte();
+      if (t === 2) return reader.int16();
+      if (t === 3) return reader.varint();
+      if (t === 4) return reader.varint64();
+      if (t === 5) return reader.float32();
+      if (t === 6) return reader.float64(); // double
+      if (t === 7) {
+        // ByteArray
+        const size2 = reader.varint();
+        const bytes = [];
+        for (let j = 0; j < size2; j++) {
+          bytes.push(reader.byte());
+        }
+        return bytes;
+      }
+      if (t === 8) return reader.string();
+      if (t === 9) {
+        // ListTag
+        const listType = reader.byte();
+        const size2 = reader.varint();
+        const listValues = [];
+        for (let j = 0; j < size2; j++) {
+          listValues.push(this.#parseTagByType(reader, listType));
+        }
+        return listValues;
+      }
+      if (t === 10) {
+        // CompoundTag 再帰
+        const compound = {};
+        while (true) {
+          const subType = reader.byte();
+          if (subType === 0) break; // TAG_End
+          const subName = reader.string();
+          compound[subName] = this.#parseTagByType(reader, subType);
+        }
+        return compound;
+      }
+      if (t === 11) {
+        // IntArray (varint[])
+        const size2 = reader.varint();
+        const ints = [];
+        for (let j = 0; j < size2; j++) {
+          ints.push(reader.varint());
+        }
+        return ints;
+      }
+      throw new Error(`Unknown definition type: ${t}`);
+    }
+    //#region SkinData
+    #skinData(reader) {
+      return {
+        width: reader.uint32(),
+        height: reader.uint32(),
+        data: reader.string(),
+      };
+    }
+    //#region serializeSkin
+    #serializeSkin(reader) {
+      return {
+        //#region type
+        id: reader.string(),
+        resourcePatch: reader.string(),
+        imageData: this.#skinData(reader),
+        //#region AnimatedImageData
+        animatedImageData: {
+          skinimage: this.#skinData(reader),
+          animatedTextureType: ["none", "face", "body32", "body128"][
+            reader.varuint32()
+          ],
+          frames: reader.float32(),
+          animationExpression: ["linear", "blinking"][reader.varuint32()],
+        },
+        capeImageData: this.#skinData(reader),
+        geometrydata: reader.string(),
+        geometryDataMinEngineVersion: reader.string(),
+        animationData: reader.string(),
+        capeId: reader.string(),
+        fullId: reader.string(),
+        armsize: ["slim", "wide"][reader.uint8()],
+        skinColor: reader.int32(),
+        //#region personaPieces
+        personaPieces: (() => {
+          const size = reader.uint32();
+          const piece = {};
+          for (let i = 0; i < size; i++) {
+            piece[i] = {
+              id: reader.string(),
+              type: reader.string(),
+              packId: reader.string(),
+              isDefault: reader.bool(),
+              productId: reader.string(),
+            };
+          }
+          return piece;
+        })(),
+        //#region personaTintColors
+        personaTintColors: (() => {
+          const size = reader.uint32();
+          const piece = {};
+          for (let i = 0; i < size; i++) {
+            piece[i] = {
+              paletteType: reader.varuint32(),
+              paletteColors: (() => {
+                const size2 = reader.uint32();
+                const colors = new Array(size2);
+                for (let j = 0; j < size2; j++) {
+                  colors[j] = [
+                    reader.string(),
+                    reader.string(),
+                    reader.string(),
+                    reader.string(),
+                  ];
+                }
+                return colors;
+              })(),
+            };
+          }
+          return piece;
+        })(),
+        isPremium: reader.bool(),
+        isPersonaCapeOnClassicSkin: reader.bool(),
+        isPrimaryUser: reader.bool(),
+        overridesPlayerAppearance: reader.bool(),
+        trustedSkinFlag: reader.string(), // Unset False True
+        profileHash: reader.string(),
+        //#endregion
+      };
+    }
+  }
+  //#endregion
+}
+
+
 )js";
 
 constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
@@ -814,6 +1568,10 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     platform: string;
     run(file: string, args?: string[], options?: { cwd?: string; timeout?: number }): Promise<{ code: number; output: string }>;
   };
+
+declare class remiria_util {
+  // STUB!
+}
 )ts";
 
 constexpr std::string_view kDeclarationsGlobals = R"ts(
