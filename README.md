@@ -1,77 +1,55 @@
+<p>めっちゃAI使ってるよ！ｗ</p>
 <div align="center">
-  <img src="https://minecraft.wiki/images/Spyglass_JE2_BE1.png" alt="Logo" width="80" height="80">
+  <img src="https://minecraft.wiki/images/Spyglass_JE2_BE1.png" alt="ロゴ" width="80" height="80">
 
-<h3>Spyglass</h3>
+<h3>Spyglass JSモジュール</h3>
 
 <p>
-  <b>A packet capture that runs inside the Minecraft: Bedrock client</b><br>
-  Every packet the client sends and receives, and for the ones it fails to read, where it gave up and why
+  <b>Minecraft: Bedrockクライアント内部で動作するパケットキャプチャ</b><br>
+  クライアントが送受信するすべてのパケット、および読み取りに失敗したパケットについては、どこで中断し、なぜ失敗したのかを表示します。
 </p>
 
-[![CI](https://github.com/EndstoneMC/spyglass/actions/workflows/ci.yml/badge.svg)](https://github.com/EndstoneMC/spyglass/actions/workflows/ci.yml)
+[![CI](https://github.com/remiria1315/spyglass-js-module/actions/workflows/ci.yml/badge.svg)](https://github.com/remiria1315/spyglass-js-module/actions/workflows/ci.yml)
 [![Minecraft](https://img.shields.io/badge/minecraft-Bedrock_(Windows,_Linux)-black)](https://www.minecraft.net/en-us/download)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Discord](https://img.shields.io/discord/1230982180742631457?logo=discord&logoColor=white&color=5865F2)](https://discord.gg/xxgPuc2XN9)
+soygrass [![Discord](https://img.shields.io/discord/1230982180742631457?logo=discord&logoColor=white&color=5865F2)](https://discord.gg/xxgPuc2XN9)
 
 </div>
 
-![The Spyglass overlay running in the client](docs/screenshot.png)
+![クライアントで動作するSpyglassオーバーレイ](docs/screenshot.png)
 
-## What you get
+## 機能概要
 
-**List** — every packet of the session, oldest first: direction, id, length, name. Follows the tail until you scroll
-away from it. Failed decodes are coloured.
+**一覧 (List)** — セッション内のすべてのパケットを古い順に表示します：方向、ID、長さ、名前。リストからスクロールして離れるまで、末尾（最新）に追従します。デコードに失敗したものは色分けされます。
 
-**Details** — the frame, the packet, and the fields it decoded to, with names, values, enum names and nesting from
-the client's own cereal reflection. A field holding NBT opens as a tag tree. On a failure, the error the client
-raised, the fields it managed before it stopped, and the Bedrock call stack under it, down to file and line.
+**詳細 (Details)** — フレーム、パケット、およびクライアント自身のシリアル（cereal）リフレクションからデコードされたフィールド（名前、値、列挙型名、ネスト構造を含む）を表示します。NBTを保持するフィールドはタグツリーとして開きます。失敗時には、クライアントがスローしたエラー、停止するまでに処理できたフィールド、およびファイル名と行番号まで遡ったBedrockのコールスタックが表示されます。
 
-![A StartGamePacket expanded in the details pane](docs/details.png)
+![詳細ペインで展開されたStartGamePacket](docs/details.png)
 
-*Every field of a `StartGamePacket`, named, typed and nested by the client's own cereal reflection.*
+*クライアント自身のシリアルリフレクションによって命名、型付け、ネストされた `StartGamePacket` のすべてのフィールド。*
 
-**Bytes** — the body as one hex run, with the part the decode never reached tinted. Select a range by click, drag
-and shift-click in either half, search it for hex or text with `Ctrl+F` and `F3`, and copy as a hex dump, a hex
-stream, printable text, a C array or base64. `Show text...` puts the same output in a box instead of on the
-clipboard.
+**バイト (Bytes)** — ボディを1つの16進数（ヘックス）の連続として表示し、デコード処理が到達しなかった部分は色を変えて表示します。両方の半面でクリック、ドラッグ、Shift+クリックによる範囲選択が可能で、`Ctrl+F` や `F3` を使ったヘックスまたはテキストの検索、さらに16進数ダンプ、16進数ストリーム、出力可能なテキスト、C言語の配列、Base64としてのコピーが行えます。「テキストを表示...（Show text...）」を使うと、クリップボードではなくボックス内に同じ出力が表示されます。
 
-**Filter**, on the toolbar — every packet the client knows, by id, each with a tick box and a seen count. A find box
-that `All`, `None` and `Invert` act through, `Failed decodes only`, and a box per direction. Right-clicking a packet
-in the list hides it or shows only it. The button carries a mark while a filter is on.
+**フィルター (Filter)** — ツールバー上にあり、クライアントが認識しているすべてのパケットをIDごとに、チェックボックスおよび検出回数とともに表示します。「すべて（All）」「なし（None）」「反転（Invert）」が機能する検索ボックス、「デコード失敗のみ（Failed decodes only）」、および方向ごとのボックスがあります。リスト内のパケットを右クリックすると、非表示にしたり、そのパケットのみを表示したりできます。フィルターが有効な間は、ボタンにマークが表示されます。
 
-**Capture** — `Start`, `Stop` and `Restart`. Sent packets as well as received ones, no length limit, and temporary:
-it goes when the client does, and one left behind by a crashed client is cleaned up on the next inject. `Capture ▸
-Options` sets the memory it may use and turns off capturing sent packets. The status bar carries the totals, the
-share that failed, the extent of the selection, how many packets are shown, the size of the capture, and how many
-packets were dropped rather than allowed to hold the game up.
+**キャプチャ (Capture)** — `Start`、`Stop`、`Restart`。送信パケットおよび受信パケットに対応し、長さの制限はありません。一時的なものであり、クライアントの終了とともに消滅します。クラッシュしたクライアントに残されたデータは、次回のインジェクト時にクリーンアップされます。「キャプチャ ＞ オプション（Capture ▸ Options）」から、使用可能なメモリの設定や送信パケットのキャプチャ無効化を行えます。ステータスバーには、合計数、失敗の割合、選択範囲の広さ、表示されているパケット数、キャプチャのサイズ、およびゲームの進行を妨げないために破棄されたパケット数が表示されます。
 
-**Menus**, with nothing bound to a key:
+**メニュー**（ショートカットキーは割り当てられていません）：
 
-- `Go` — a packet by number, the first or last, the next failed decode, the next of the same kind, and back and
-  forward through the ones you have looked at.
-- `Edit` — find by name, by id, or by hex or text in the body; mark packets; set the zero of the clock; copy the
-  row, the details tree, or every displayed row as text or CSV.
-- `View` — hide panes, zoom, expand the tree, turn the colouring off, fit the columns, open a packet in its own
-  window, and set what `Time` means: since the first packet, the previous captured one, the previous displayed one,
-  or the time of day.
-- `Analyze` — failed decodes grouped by the reason the client gave and the packet it was reading, click to jump; and
-  the selected bytes read out as an integer, a float, a varint and text.
-- `Statistics` — what the session captured, a per-id breakdown with its share of the bytes, the distribution of
-  packet lengths, and a graph of packets or bytes per second.
-- `File` — `Export Packets...` as text, CSV or JSON: all of them, the selected one, the marked ones or a range,
-  against everything captured or only what the filter shows, with the summary line, the details tree and the bytes
-  in any combination. It counts and estimates the size first, then runs behind a progress bar you can cancel,
-  without stopping the game. `Export Selected Packet Bytes...` writes the selected range raw, the whole body when
-  nothing is selected. `Export Session Summary...` writes the totals.
+- `Go` — パケット番号、最初または最後、次のデコード失敗、同種の次のパケット、および閲覧履歴の戻る・進む。
+- `Edit` — 名前、ID、またはボディ内のヘックス・テキストによる検索、パケットへのマーク付け、クロックのゼロ点設定、行・詳細ツリー・表示中の全行のテキストまたはCSV形式でのコピー。
+- `View` — ペインの非表示、ズーム、ツリーの展開、色分けの無効化、カラム幅の調整、個別のウィンドウでのパケット表示、および「時間（Time）」の基準設定（最初のパケットからの経過時間、直前のキャプチャパケットからの経過時間、直前の表示パケットからの経過時間、または時刻）。
+- `Analyze` — 失敗したデコードをクライアントのエラー理由と読み取っていたパケットごとにグループ化して表示（クリックでジャンプ）、および選択したバイトを整数、浮動小数点数、可変長整数（varint）、テキストとして読み取り。
+- `Statistics` — セッションのキャプチャ内容、IDごとのバイト数の割合の内訳、パケット長の分布、および1秒あたりのパケット数またはバイト数のグラフ。
+- `File` — `Export Packets...`（すべてのパケット、選択したパケット、マークされたパケット、または範囲指定したパケットを、キャプチャ全体またはフィルター表示中のみを対象とし、サマリー行、詳細ツリー、バイト表現を任意の組み合わせでテキスト、CSV、JSON形式でエクスポート）。件数のカウントとサイズ見積もりの後、ゲームを停止させることなく、キャンセル可能なプログレスバーの裏で実行されます。`Export Selected Packet Bytes...` は選択範囲の生データ（未選択時はボディ全体）を書き出します。`Export Session Summary...` は合計値を書き出します。
 
-The save dialog starts in `%LOCALAPPDATA%\spyglass`, or `~/.local/share/spyglass` on the Linux launcher, lists the
-directory it is in, takes a path typed in full, and says so before it overwrites a file.
+保存ダイアログは `%LOCALAPPDATA%\spyglass`（Linuxランチャーの場合は `~/.local/share/spyglass`）で開き、現在のディレクトリを表示し、フルパスの直接入力を受け付け、ファイルを上書きする前に警告を表示します。
 
-## Modules
+---
 
-JavaScript modules run inside the client through an embedded QuickJS. A module subscribes to packets in either
-direction, reads the fields the client decoded or the raw body, and can drop a packet the client is about to send or
-replace a packet body.
+## モジュール
+
+JavaScriptモジュールは、内蔵されたQuickJSを通じてクライアント内部で実行されます。モジュールはどちらの方向のパケットも購読でき、クライアントがデコードしたフィールドや生データを読み取ることができるほか、クライアントが送信しようとしているパケットを破棄（キャンセル）したり、パケットのボディを置き換えたりすることができます。
 
 ```js
 import { packet, Packets } from "spyglass";
@@ -79,145 +57,3 @@ import { packet, Packets } from "spyglass";
 packet.subscribe(Packets.textPacket, (pkt, ctx, cancel, override) => {
   cancel();
 }, { direction: "c2s" });
-```
-
-Put `<name>.js` in the modules folder and manage it from game chat:
-
-| command | |
-| --- | --- |
-| `!!module folder` | open the modules folder |
-| `!!module list` | list modules and their state |
-| `!!module enable <name>` | load a module and keep it enabled |
-| `!!module disable <name>` | unload a module |
-| `!!module reload <name>` | load a module again from disk |
-
-The messages are dropped before they reach the server. Their output is in the modules window, under
-`Modules > Module Manager`. [docs/modules.md](docs/modules.md) has the whole API.
-
-## Quick Start
-
-### Windows
-
-Unpack `spyglass-vX.Y.Z-windows-x64.zip` from the
-[releases](https://github.com/EndstoneMC/spyglass/releases), or build it yourself below. Start Minecraft, then run
-the injector beside the DLL:
-
-```shell
-spyglass.exe
-```
-
-It asks for administrator rights, and the elevated run carries on in a window of its own.
-
-The zip holds one DLL per client build. The injector reads the running client's version and whether it is the
-preview one, and loads the newest payload beside it that does not sit above that version, so
-`spyglass-0.3.3-1.26.40.dll` also serves a 1.26.45 release client while `spyglass-0.3.3-1.26.60.preview.dll` serves
-a 1.26.60 preview. A payload you built for some other version is picked up the same way if you drop it in beside the
-others.
-
-| option | |
-| --- | --- |
-| `--dll <path>` | a payload of your choosing, instead of the one the version match would pick |
-| `--process <name>` | a client process other than `Minecraft.Windows.exe` |
-
-Press **F12** in game for the overlay. It takes the mouse only while the game has let go of the cursor and the
-pointer is over the overlay, so mouse-look keeps working underneath an overlay left open during play.
-
-### Linux
-
-There the game runs under the
-[Minecraft Bedrock Launcher](https://github.com/minecraft-linux/mcpelauncher-manifest), which loads shared objects
-as mods, so there is no injector and nothing to elevate. Unpack `spyglass-vX.Y.Z-linux-x64.zip` from the
-[releases](https://github.com/EndstoneMC/spyglass/releases), or build it yourself below. It holds one mod folder per
-client build, each with the shared object and its `mod.json`. Copy the one named for the client your launcher runs to
-where the launcher looks:
-
-```shell
-mkdir -p ~/.local/share/mcpelauncher/mods/spyglass/0.3.3
-cp -r spyglass-0.3.3-1.26.40 ~/.local/share/mcpelauncher/mods/spyglass/0.3.3/x86_64
-```
-
-Then add that directory under `Mods` in the profile you play, and start the game.
-
-The overlay key is **F12**, the same as on Windows.
-
-## Building from Source
-
-Both platforms build through `CMakePresets.json`. Dependencies are fetched during configure, so there is nothing to
-install first.
-
-### Windows
-
-Needs clang-cl and lld-link (LLVM 18+, the "C++ Clang tools for Windows" component of Visual Studio), the MSVC
-toolchain for the Windows SDK and STL, CMake 3.28+ and Ninja. Run it from a Developer prompt.
-
-```shell
-cmake --preset relwithdebinfo-windows
-cmake --build --preset relwithdebinfo-windows
-```
-
-`spyglass.exe` and one DLL per client build land in `build/relwithdebinfo-windows`.
-
-`build.bat` runs both steps from any prompt, writes the output to `build/<preset>.log` and prints the last 20 lines, or the It builds only 1.26.50 by default; set `CLIENTS` (for example `set CLIENTS=1.26.50;1.26.60.21`) to change that.
-errors when the build fails.
-
-### Linux launcher mod
-
-The launcher mod is an Android x86_64 shared object. Needs the Android NDK with `ANDROID_NDK_ROOT` set, CMake 3.28+
-and Ninja. The Android presets hide themselves when that variable is unset, and the Windows presets hide themselves
-off a Windows host.
-
-```shell
-cmake --preset relwithdebinfo-android
-cmake --build --preset relwithdebinfo-android
-```
-
-One shared object per client build lands in `build/relwithdebinfo-android`. `build.sh` does the same and keeps the
-output in `build/<preset>.log`.
-
-`release-windows`, `release-android` and `debug-android` configure the same way. CI builds the `relwithdebinfo`
-preset for each platform and uploads what `cmake --install` stages.
-
-### Targeting another client
-
-`MINECRAFT_CLIENTS` is the list of client builds a configure produces a payload for, one target each. The default is
-what CI ships. A release client is named by its three-part version, a preview client by all four: the build number
-is what a preview's patterns are cut against, and a release carries its whole update line whatever its build number
-is, so the part count is what says which channel an entry means.
-
-```shell
-cmake --preset relwithdebinfo-windows -D MINECRAFT_CLIENTS="1.26.40;1.26.60.21"
-```
-
-A version no pattern set covers fails the build rather than producing a payload that would not work.
-
-## Client Versions
-
-| payload | client builds |
-| --- | --- |
-| `spyglass-0.3.3-1.26.40.dll` | Windows release 1.26.40.5, 1.26.44.3, 1.26.45.1 |
-| `spyglass-0.3.3-1.26.50.dll` | Windows release 1.26.50.5, 1.26.51.1 |
-| `spyglass-0.3.3-1.26.60.preview.dll` | Windows preview 1.26.60.30 |
-| `libspyglass-0.3.3-1.26.40.so` | Android x86_64 1.26.4x, for the Linux launcher |
-
-A payload is built for one client line, release or preview, and no payload is interchangeable with another. On
-Windows the injector picks the matching one; on Linux you name it yourself. A payload loaded into a client it was
-not built for installs nothing and says so in the errors window, which is also where the reason is if the packet
-count stays at zero while you are connected.
-
-A payload is not tied to a single build, and in practice covers the builds of a line, but a client update can still
-need it refreshed.
-
-## Caveats
-
-- Reports are only as good as the reasons the client gives, which vary by packet.
-- On Windows the overlay draws over Direct3D 11 and 12, and no other rendering path is supported. On Linux it is
-  drawn by the launcher's own ImGui, and is left out when the two ImGui revisions disagree.
-- A stripped launcher gets no overlay.
-- A client update that adds a source file renders its call stack frames as `<hash>:line` until a line for it is
-  added to the filename table.
-- The capture contains packet contents from whatever server you are connected to, including whatever you logged in
-  with. Nothing is sanitised, and an export writes it to disk in the clear, so read a file before you share it.
-
-## License
-
-MIT, see [LICENSE](LICENSE).
