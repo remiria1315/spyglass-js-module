@@ -16,7 +16,7 @@ on:
 jobs:
   release:
     name: Prepare release
-    if: github.repository == 'EndstoneMC/spyglass'
+    if: github.repository == 'remiria1315/spyglass-js-module'
     runs-on: ubuntu-latest
     permissions:
       contents: write
