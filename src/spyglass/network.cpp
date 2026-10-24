@@ -121,13 +121,18 @@ std::size_t header_size(const std::string_view frame)
     return header;
 }
 
-int packet_id_of(const std::string_view frame)
+std::uint32_t header_value_of(const std::string_view frame)
 {
     std::uint32_t value = 0;
     for (std::size_t i = 0; i < header_size(frame) && i < frame.size(); ++i) {
         value |= static_cast<std::uint32_t>(static_cast<std::uint8_t>(frame[i]) & 0x7FU) << (7 * i);
     }
-    return static_cast<int>(value & 0x3FFU);
+    return value;
+}
+
+int packet_id_of(const std::string_view frame)
+{
+    return static_cast<int>(header_value_of(frame) & 0x3FFU);
 }
 
 std::string frame_of(const int id, const std::string_view body, const std::uint32_t header_bits = 0)
@@ -292,6 +297,7 @@ void NetworkSystem::sendInternalDetour(const NetworkIdentifier &id, const Packet
     for (const auto &frame : to_server) {
         const auto injected = spyglass::create_packet(packet_id_of(frame));
         if (injected) {
+            injected->setSenderSubId(static_cast<SubClientId>((header_value_of(frame) >> 10U) & 0x3U));
             SPYGLASS_CALL_ORIGINAL(&NetworkSystem::sendInternalDetour, g_send_internal, this, id, *injected, frame);
             record_sent(*injected, std::string_view{frame}.substr(header_size(frame)));
         }
