@@ -46,7 +46,8 @@ struct ModuleInfo {
     std::string error;
 };
 
-using Sender = bool (*)(Side side, Direction direction, int id, std::string_view body, int player);
+using Sender = bool (*)(Side side, Direction direction, int id, std::string_view body, int player,
+                        int sub_client);
 
 void set_sender(Sender sender);
 

@@ -89,6 +89,9 @@ packet.subscribe(Packets.textPacket, (pkt, ctx, cancel) => {
 - `ctx.side` is `"client"` or `"server"`. `ctx.player` is a number for the player on the other end of a server packet, and
   `null` in a client module. A number stays the same for a player until the game is closed.
 - `packet.send` in a server module defaults to `{ direction: "s2c" }` and takes `to`, a player number or `"all"`.
+- `subClient` (0 to 3) sets the sub-client bits in the packet header. In `c2s` it is the sender, in a server module's `s2c` it is
+  the recipient. It is not supported for `s2c` in a client module. This only sets the header bits; it does not log a
+  second player in, and it has not been tested against a live client.
   Sending a packet as if a player had sent it to the server is not supported.
 - `commands.register` works in a server module as well. The command list is changed for every player, and a reply goes
   to the player who ran the command.

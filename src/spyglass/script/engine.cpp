@@ -273,7 +273,9 @@ export const packet = Object.freeze({
     if (direction !== "c2s" && direction !== "s2c") throw new TypeError("direction is c2s or s2c");
     const to = options.to === undefined || options.to === "all" ? -1 : options.to;
     if (!Number.isInteger(to)) throw new TypeError("to is a player number or \"all\"");
-    native.send(id, directions[direction], typeof body?.toBytes === "function" ? body.toBytes() : body, to);
+    const subClient = options.subClient ?? 0;
+    if (!Number.isInteger(subClient) || subClient < 0 || subClient > 3) throw new TypeError("subClient is 0 to 3");
+    native.send(id, directions[direction], typeof body?.toBytes === "function" ? body.toBytes() : body, to, subClient);
   },
 });
 
@@ -1637,7 +1639,7 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
       callback: (pkt: any, ctx: PacketContext, cancel: () => void, override: (body: Uint8Array | ArrayBuffer) => void) => void,
       options?: { direction?: "c2s" | "s2c" | "both" },
     ): () => void;
-    send(target: number | PacketClass, body: Uint8Array | BinaryWriter, options?: { direction?: "c2s" | "s2c" }): void;
+    send(target: number | PacketClass, body: Uint8Array | BinaryWriter, options?: { direction?: "c2s" | "s2c"; to?: number | "all"; subClient?: 0 | 1 | 2 | 3 }): void;
   };
   export const fs: {
     readText(path: string): string;
@@ -2396,16 +2398,18 @@ JSValue js_send(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv
     std::int32_t id = 0;
     std::int32_t wire = 0;
     std::int32_t player = -1;
+    std::int32_t sub_client = 0;
     auto bytes = argc < 3 ? std::nullopt : bytes_of(ctx, argv[2]);
     if (module == nullptr || argc < 3 || JS_ToInt32(ctx, &id, argv[0]) != 0 || JS_ToInt32(ctx, &wire, argv[1]) != 0 ||
-        !bytes || (argc > 3 && JS_ToInt32(ctx, &player, argv[3]) != 0)) {
+        !bytes || (argc > 3 && JS_ToInt32(ctx, &player, argv[3]) != 0) ||
+        (argc > 4 && JS_ToInt32(ctx, &sub_client, argv[4]) != 0) || sub_client < 0 || sub_client > 3) {
         return JS_ThrowTypeError(ctx, "send expects a packet id, a direction, the packet body as bytes and a player");
     }
     if (id < 1 || id >= kIdLimit) {
         return JS_ThrowRangeError(ctx, "packet id %d is out of range", id);
     }
     const auto network = (module->side == Side::Client) == (wire == 1) ? Direction::Outbound : Direction::Inbound;
-    if (g_sender == nullptr || !g_sender(module->side, network, id, *bytes, player)) {
+    if (g_sender == nullptr || !g_sender(module->side, network, id, *bytes, player, sub_client)) {
         return JS_ThrowInternalError(ctx,
                                      "this packet cannot be sent: the hook for it is missing, the packet id is "
                                      "unknown, there is no such player, or this direction is not supported");

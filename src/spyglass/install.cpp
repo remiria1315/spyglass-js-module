@@ -63,11 +63,14 @@ void install()
     attempt("packet hook", install_network_hook);
     attempt("script modules", [] {
         script::set_sender([](const script::Side side, const Direction direction, const int id,
-                              const std::string_view body, const int player) {
+                              const std::string_view body, const int player, const int sub_client) {
             if (side == script::Side::Server) {
-                return direction == Direction::Outbound && send_to_player(id, body, player);
+                return direction == Direction::Outbound && send_to_player(id, body, player, sub_client);
             }
-            return direction == Direction::Outbound ? send_to_server(id, body) : send_to_client(id, body);
+            if (direction == Direction::Outbound) {
+                return send_to_server(id, body, sub_client);
+            }
+            return sub_client == 0 && send_to_client(id, body);
         });
         script::start(packet_names());
     });

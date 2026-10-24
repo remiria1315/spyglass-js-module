@@ -130,10 +130,10 @@ int packet_id_of(const std::string_view frame)
     return static_cast<int>(value & 0x3FFU);
 }
 
-std::string frame_of(const int id, const std::string_view body)
+std::string frame_of(const int id, const std::string_view body, const std::uint32_t header_bits = 0)
 {
     std::string frame;
-    for (auto rest = static_cast<std::uint32_t>(id);; rest >>= 7U) {
+    for (auto rest = static_cast<std::uint32_t>(id) | header_bits;; rest >>= 7U) {
         const auto low = static_cast<char>(rest & 0x7FU);
         frame.push_back(rest >= 0x80U ? static_cast<char>(low | 0x80) : low);
         if (rest < 0x80U) {
@@ -543,14 +543,14 @@ const cereal::ReflectionCtx *reflection_ctx()
     return g_reflection.load(std::memory_order_relaxed);
 }
 
-bool send_to_server(const int id, const std::string_view body)
+bool send_to_server(const int id, const std::string_view body, const int sub_client)
 {
     if (g_hooks.send_internal == nullptr || id < 1 || id >= static_cast<int>(kPacketIdLimit) ||
         body.size() > (1U << 20U) || !create_packet(id)) {
         return false;
     }
     const std::lock_guard lock{g_inject_mutex};
-    g_injected.push_back(frame_of(id, body));
+    g_injected.push_back(frame_of(id, body, static_cast<std::uint32_t>(sub_client) << 10U));
     g_pending.store(g_injected.size() + g_injected_inbound.size() + g_injected_server.size(), std::memory_order_relaxed);
     return true;
 }
@@ -567,7 +567,7 @@ bool send_to_client(const int id, const std::string_view body)
     return true;
 }
 
-bool send_to_player(const int id, const std::string_view body, const int player)
+bool send_to_player(const int id, const std::string_view body, const int player, const int sub_client)
 {
     {
         const std::lock_guard lock{g_players_mutex};
@@ -580,7 +580,7 @@ bool send_to_player(const int id, const std::string_view body, const int player)
         return false;
     }
     const std::lock_guard lock{g_inject_mutex};
-    g_injected_server.push_back({player, frame_of(id, body)});
+    g_injected_server.push_back({player, frame_of(id, body, static_cast<std::uint32_t>(sub_client) << 12U)});
     g_pending.store(g_injected.size() + g_injected_inbound.size() + g_injected_server.size(), std::memory_order_relaxed);
     return true;
 }

@@ -35,9 +35,9 @@ const std::vector<std::string> &packet_names();
 
 [[nodiscard]] const cereal::ReflectionCtx *reflection_ctx();
 [[nodiscard]] std::shared_ptr<Packet> create_packet(int id);
-[[nodiscard]] bool send_to_server(int id, std::string_view body);
+[[nodiscard]] bool send_to_server(int id, std::string_view body, int sub_client = 0);
 [[nodiscard]] bool send_to_client(int id, std::string_view body);
-[[nodiscard]] bool send_to_player(int id, std::string_view body, int player);
+[[nodiscard]] bool send_to_player(int id, std::string_view body, int player, int sub_client = 0);
 Bedrock::Result<void> read_no_header(Packet &packet, ReadOnlyBinaryStream &stream, const cereal::ReflectionCtx &ctx,
                                      SubClientId sub_id);
 

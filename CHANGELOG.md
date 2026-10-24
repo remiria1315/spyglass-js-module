@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `packet.send` takes `subClient` (0 to 3), which sets the sub-client bits in the packet header. It does not log a
+  second player in.
+
 ## [0.5.0] - 2026-10-23
 
 ### Added
