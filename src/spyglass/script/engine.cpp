@@ -663,7 +663,94 @@ export const fetch = async (url, options = {}) => {
   return new Response(await native.request(String(url), String(options.method ?? "GET").toUpperCase(), headers, body, timeout));
 };
 
-export const net = Object.freeze({ fetch });
+export class WebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  #id = -1;
+  #listeners = new Map();
+  constructor(url, options = {}) {
+    this.url = String(url);
+    this.readyState = 0;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onerror = null;
+    this.onclose = null;
+    const headers = [];
+    for (const [key, value] of Object.entries(options.headers ?? {})) headers.push(String(key), String(value));
+    const timeout = Math.min(Math.max(options.timeout ?? 15000, 1), 60000);
+    native.wsOpen(this.url, headers, timeout).then(
+      (id) => {
+        if (this.readyState === 3) {
+          native.wsClose(id, 1000, "");
+          return;
+        }
+        this.#id = id;
+        this.readyState = 1;
+        this.#emit("open", {});
+        this.#receive();
+      },
+      (error) => this.#fail(error),
+    );
+  }
+  send(data) {
+    if (this.readyState !== 1) throw new Error("the WebSocket is not open");
+    if (typeof data === "string") native.wsSend(this.#id, data, false);
+    else native.wsSend(this.#id, typeof data?.toBytes === "function" ? data.toBytes() : data, true);
+  }
+  close(code = 1000, reason = "") {
+    if (this.readyState >= 2) return;
+    if (this.#id < 0) {
+      this.readyState = 3;
+      this.#emit("close", { code, reason: String(reason), wasClean: true });
+      return;
+    }
+    this.readyState = 2;
+    native.wsClose(this.#id, code, String(reason));
+  }
+  addEventListener(type, listener) {
+    const list = this.#listeners.get(type) ?? [];
+    list.push(listener);
+    this.#listeners.set(type, list);
+  }
+  removeEventListener(type, listener) {
+    this.#listeners.set(type, (this.#listeners.get(type) ?? []).filter((item) => item !== listener));
+  }
+  #receive() {
+    native.wsReceive(this.#id).then(
+      (message) => {
+        if (message.closed) {
+          this.readyState = 3;
+          this.#emit("close", { code: message.code, reason: message.data, wasClean: message.code !== 1006 });
+          return;
+        }
+        this.#emit("message", { data: message.binary ? new Uint8Array(message.data) : message.data });
+        if (this.readyState < 3) this.#receive();
+      },
+      (error) => this.#fail(error),
+    );
+  }
+  #fail(error) {
+    this.readyState = 3;
+    this.#emit("error", { message: error?.message ?? String(error) });
+    this.#emit("close", { code: 1006, reason: "", wasClean: false });
+  }
+  #emit(type, event) {
+    event.type = type;
+    event.target = this;
+    for (const handler of [this[`on${type}`], ...(this.#listeners.get(type) ?? [])]) {
+      if (typeof handler !== "function") continue;
+      try {
+        handler.call(this, event);
+      } catch (error) {
+        console.error(`WebSocket ${type}: ${error?.message ?? error}`);
+      }
+    }
+  }
+}
+
+export const net = Object.freeze({ fetch, WebSocket });
 
 export const process = Object.freeze({
   platform: native.platform,
@@ -1574,7 +1661,29 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
   }
   export interface FetchOptions { method?: string; headers?: Record<string, string>; body?: string; timeout?: number }
   export function fetch(url: string, options?: FetchOptions): Promise<Response>;
-  export const net: { fetch: typeof fetch };
+  export interface WebSocketOptions { headers?: Record<string, string>; timeout?: number }
+  export interface WebSocketEvent { type: string; target: WebSocket }
+  export interface WebSocketMessageEvent extends WebSocketEvent { data: string | Uint8Array }
+  export interface WebSocketErrorEvent extends WebSocketEvent { message: string }
+  export interface WebSocketCloseEvent extends WebSocketEvent { code: number; reason: string; wasClean: boolean }
+  export class WebSocket {
+    static readonly CONNECTING: 0;
+    static readonly OPEN: 1;
+    static readonly CLOSING: 2;
+    static readonly CLOSED: 3;
+    readonly url: string;
+    readyState: 0 | 1 | 2 | 3;
+    onopen: ((event: WebSocketEvent) => void) | null;
+    onmessage: ((event: WebSocketMessageEvent) => void) | null;
+    onerror: ((event: WebSocketErrorEvent) => void) | null;
+    onclose: ((event: WebSocketCloseEvent) => void) | null;
+    constructor(url: string, options?: WebSocketOptions);
+    send(data: string | Uint8Array | ArrayBuffer | BinaryWriter): void;
+    close(code?: number, reason?: string): void;
+    addEventListener(type: "open" | "message" | "error" | "close", listener: (event: any) => void): void;
+    removeEventListener(type: "open" | "message" | "error" | "close", listener: (event: any) => void): void;
+  }
+  export const net: { fetch: typeof fetch; WebSocket: typeof WebSocket };
   export const process: {
     platform: string;
     run(file: string, args?: string[], options?: { cwd?: string; timeout?: number }): Promise<{ code: number; output: string }>;
@@ -1788,9 +1897,13 @@ struct Pending {
 };
 
 struct Completion {
+    enum class Kind { Run, Http, SocketOpen, SocketMessage };
     std::uint64_t module{0};
     int id{0};
-    bool http{false};
+    Kind kind{Kind::Run};
+    int socket{0};
+    bool closed{false};
+    bool binary{false};
     std::string error;
     int number{0};
     std::string headers;
@@ -1808,6 +1921,7 @@ struct Module {
     std::vector<Subscription> subscriptions;
     std::vector<Timer> timers;
     std::map<int, Pending> pending;
+    std::vector<int> sockets;
 };
 
 struct Active {
@@ -2322,7 +2436,7 @@ JSValue js_request(JSContext *ctx, JSValueConst, const int argc, JSValueConst *a
     }
     return start_work(ctx, *module, [request = std::move(request), timeout] {
         Completion done;
-        done.http = true;
+        done.kind = Completion::Kind::Http;
         try {
             auto response = http_request(request, timeout);
             done.number = response.status;
@@ -2334,6 +2448,122 @@ JSValue js_request(JSContext *ctx, JSValueConst, const int argc, JSValueConst *a
         }
         return done;
     });
+}
+
+JSValue js_ws_open(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    if (module == nullptr) {
+        return JS_ThrowInternalError(ctx, "the module is unloaded");
+    }
+    if (!granted(module->name, "net")) {
+        return denied(ctx, module->name, "net");
+    }
+    std::int32_t timeout = 0;
+    if (argc < 3 || !JS_IsObject(argv[1]) || JS_ToInt32(ctx, &timeout, argv[2]) != 0) {
+        return JS_ThrowTypeError(ctx, "wsOpen expects a url, headers and a timeout");
+    }
+    auto url = text_of(ctx, argv[0]);
+    if (!url.starts_with("ws://") && !url.starts_with("wss://")) {
+        return JS_ThrowTypeError(ctx, "only ws:// and wss:// URLs can be opened");
+    }
+    std::vector<std::pair<std::string, std::string>> headers;
+    const auto words = strings_of(ctx, argv[1]);
+    for (std::size_t i = 0; i + 1 < words.size(); i += 2) {
+        headers.emplace_back(words[i], words[i + 1]);
+    }
+    return start_work(ctx, *module, [url = std::move(url), headers = std::move(headers), timeout] {
+        Completion done;
+        done.kind = Completion::Kind::SocketOpen;
+        try {
+            done.number = websocket_open(url, headers, timeout);
+        }
+        catch (const std::exception &e) {
+            done.error = e.what();
+        }
+        return done;
+    });
+}
+
+JSValue js_ws_receive(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    if (module == nullptr) {
+        return JS_ThrowInternalError(ctx, "the module is unloaded");
+    }
+    if (!granted(module->name, "net")) {
+        return denied(ctx, module->name, "net");
+    }
+    std::int32_t socket = 0;
+    if (argc < 1 || JS_ToInt32(ctx, &socket, argv[0]) != 0) {
+        return JS_ThrowTypeError(ctx, "wsReceive expects a WebSocket id");
+    }
+    return start_work(ctx, *module, [socket] {
+        Completion done;
+        done.kind = Completion::Kind::SocketMessage;
+        done.socket = socket;
+        try {
+            auto message = websocket_receive(socket);
+            done.closed = message.closed;
+            done.binary = message.binary;
+            done.number = message.code;
+            done.body = std::move(message.data);
+        }
+        catch (const std::exception &e) {
+            done.error = e.what();
+        }
+        return done;
+    });
+}
+
+JSValue js_ws_send(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    if (module == nullptr) {
+        return JS_ThrowInternalError(ctx, "the module is unloaded");
+    }
+    if (!granted(module->name, "net")) {
+        return denied(ctx, module->name, "net");
+    }
+    std::int32_t socket = 0;
+    if (argc < 3 || JS_ToInt32(ctx, &socket, argv[0]) != 0) {
+        return JS_ThrowTypeError(ctx, "wsSend expects a WebSocket id, the data and whether it is binary");
+    }
+    const auto binary = JS_ToBool(ctx, argv[2]) > 0;
+    const auto data = binary ? bytes_of(ctx, argv[1]) : std::optional{text_of(ctx, argv[1])};
+    if (!data) {
+        return JS_ThrowTypeError(ctx, "a binary message is a Uint8Array or an ArrayBuffer");
+    }
+    try {
+        websocket_send(socket, *data, binary);
+    }
+    catch (const std::exception &e) {
+        return JS_ThrowInternalError(ctx, "%s", e.what());
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue js_ws_close(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    if (module == nullptr) {
+        return JS_ThrowInternalError(ctx, "the module is unloaded");
+    }
+    if (!granted(module->name, "net")) {
+        return denied(ctx, module->name, "net");
+    }
+    std::int32_t socket = 0;
+    std::int32_t code = 1000;
+    if (argc < 3 || JS_ToInt32(ctx, &socket, argv[0]) != 0 || JS_ToInt32(ctx, &code, argv[1]) != 0) {
+        return JS_ThrowTypeError(ctx, "wsClose expects a WebSocket id, a code and a reason");
+    }
+    try {
+        websocket_close(socket, code, text_of(ctx, argv[2]));
+    }
+    catch (const std::exception &e) {
+        return JS_ThrowInternalError(ctx, "%s", e.what());
+    }
+    return JS_UNDEFINED;
 }
 
 JSValue js_run(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
@@ -2466,6 +2696,13 @@ void unload(const std::string_view name)
         JS_FreeValue(module.ctx, pending.resolve);
         JS_FreeValue(module.ctx, pending.reject);
     }
+    for (const auto socket : module.sockets) {
+        try {
+            websocket_close(socket, 1001, "");
+        }
+        catch (const std::exception &) {
+        }
+    }
     JS_FreeValue(module.ctx, module.factory);
     JS_SetContextOpaque(module.ctx, nullptr);
     JS_FreeContext(module.ctx);
@@ -2508,6 +2745,10 @@ std::string load(const std::string &name)
                       JS_NewString(module.ctx, module.side == Side::Client ? "client" : "server"));
     JS_SetPropertyStr(module.ctx, native, "request", JS_NewCFunction(module.ctx, js_request, "request", 5));
     JS_SetPropertyStr(module.ctx, native, "run", JS_NewCFunction(module.ctx, js_run, "run", 4));
+    JS_SetPropertyStr(module.ctx, native, "wsOpen", JS_NewCFunction(module.ctx, js_ws_open, "wsOpen", 3));
+    JS_SetPropertyStr(module.ctx, native, "wsReceive", JS_NewCFunction(module.ctx, js_ws_receive, "wsReceive", 1));
+    JS_SetPropertyStr(module.ctx, native, "wsSend", JS_NewCFunction(module.ctx, js_ws_send, "wsSend", 3));
+    JS_SetPropertyStr(module.ctx, native, "wsClose", JS_NewCFunction(module.ctx, js_ws_close, "wsClose", 3));
     JS_SetPropertyStr(module.ctx, native, "platform",
 #ifdef _WIN32
                       JS_NewString(module.ctx, "windows")
@@ -2809,7 +3050,25 @@ void tick()
             value = JS_NewError(ctx);
             JS_SetPropertyStr(ctx, value, "message", JS_NewStringLen(ctx, completion.error.data(), completion.error.size()));
         }
-        else if (completion.http) {
+        else if (completion.kind == Completion::Kind::SocketOpen) {
+            module.sockets.push_back(completion.number);
+            value = JS_NewInt32(ctx, completion.number);
+        }
+        else if (completion.kind == Completion::Kind::SocketMessage) {
+            if (completion.closed) {
+                std::erase(module.sockets, completion.socket);
+            }
+            value = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, value, "closed", JS_NewBool(ctx, completion.closed));
+            JS_SetPropertyStr(ctx, value, "binary", JS_NewBool(ctx, completion.binary));
+            JS_SetPropertyStr(ctx, value, "code", JS_NewInt32(ctx, completion.number));
+            JS_SetPropertyStr(ctx, value, "data",
+                              completion.binary ? JS_NewArrayBufferCopy(
+                                                      ctx, reinterpret_cast<const std::uint8_t *>(completion.body.data()),
+                                                      completion.body.size())
+                                                : JS_NewStringLen(ctx, completion.body.data(), completion.body.size()));
+        }
+        else if (completion.kind == Completion::Kind::Http) {
             value = JS_NewObject(ctx);
             JS_SetPropertyStr(ctx, value, "status", JS_NewInt32(ctx, completion.number));
             JS_SetPropertyStr(ctx, value, "headers",

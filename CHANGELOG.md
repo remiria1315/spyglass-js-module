@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `event_RightClick`, and has `sendCommand` and `sendMessage`.
 - `World`, imported from `"spyglass"`. `new World()` keeps the player list, the world settings, the level, the game rules
   and the block properties that the server sends when the player joins.
+- `WebSocket`, imported from `"spyglass"` or read as `net.WebSocket`, for modules with the `net` permission. It opens a
+  `ws://` or `wss://` URL on Windows and has `send`, `close`, the handlers `onopen`, `onmessage`, `onerror` and `onclose`,
+  and `addEventListener`.
 - `!!module autocomplete` also declares `LocalPlayer`, `World` and the types they hold.
 
 ## [0.4.0] - 2026-10-23

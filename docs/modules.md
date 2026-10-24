@@ -236,6 +236,21 @@ response.status; response.ok; response.headers; response.text(); response.json()
 `net.fetch` is the same function. Only `http://` and `https://` work, and only on Windows. At most 16 requests per
 module run at once.
 
+```js
+import { WebSocket } from "spyglass";
+const socket = new WebSocket("wss://example.com/socket", { headers: { Authorization: "token" }, timeout: 15000 });
+socket.onopen = () => socket.send("hello");
+socket.onmessage = (event) => console.log(event.data);
+socket.onclose = (event) => console.log(event.code, event.reason);
+```
+
+`WebSocket` is also `net.WebSocket`. Only `ws://` and `wss://` work, and only on Windows. `send` takes a string, or a
+`Uint8Array`, an `ArrayBuffer` or a `BinaryWriter` for a binary message. `event.data` of `onmessage` is a string for a
+text message and a `Uint8Array` for a binary one. `onopen`, `onmessage`, `onerror` and `onclose` can be set, and
+`addEventListener` and `removeEventListener` take the same four names. `readyState` is 0 while connecting, 1 open, 2
+closing and 3 closed. `close(code?, reason?)` sends a close frame, and `onclose` runs when the server answers. A socket
+holds one of the 16 requests that a module can run at once, and a module that is unloaded closes its sockets.
+
 ### `process`
 
 ```js

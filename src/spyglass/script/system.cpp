@@ -1,10 +1,13 @@
 #include "spyglass/script/system.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <format>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
 
@@ -148,6 +151,160 @@ HttpResponse http_request(const HttpRequest &request, const int timeout_ms)
     return response;
 }
 
+namespace {
+
+struct WebSocketSession {
+    WinHttpHandle session;
+    WinHttpHandle connection;
+    WinHttpHandle socket;
+    std::mutex send_mutex;
+};
+
+std::mutex g_sockets_mutex;
+std::map<int, std::shared_ptr<WebSocketSession>> g_sockets;
+int g_next_socket = 1;
+
+std::shared_ptr<WebSocketSession> socket_of(const int handle)
+{
+    const std::lock_guard lock{g_sockets_mutex};
+    const auto found = g_sockets.find(handle);
+    if (found == g_sockets.end()) {
+        throw std::runtime_error{"the WebSocket is closed"};
+    }
+    return found->second;
+}
+
+}  // namespace
+
+int websocket_open(const std::string &url, const std::vector<std::pair<std::string, std::string>> &headers,
+                   const int timeout_ms)
+{
+    auto http_url = url;
+    if (http_url.starts_with("wss://")) {
+        http_url.replace(0, 6, "https://");
+    }
+    else if (http_url.starts_with("ws://")) {
+        http_url.replace(0, 5, "http://");
+    }
+    else {
+        throw std::runtime_error{std::format("'{}' is not a ws or wss url", url)};
+    }
+    const auto wide_url = wide(http_url);
+    URL_COMPONENTSW parts{};
+    parts.dwStructSize = sizeof(parts);
+    parts.dwSchemeLength = static_cast<DWORD>(-1);
+    parts.dwHostNameLength = static_cast<DWORD>(-1);
+    parts.dwUrlPathLength = static_cast<DWORD>(-1);
+    parts.dwExtraInfoLength = static_cast<DWORD>(-1);
+    if (!WinHttpCrackUrl(wide_url.c_str(), 0, 0, &parts)) {
+        throw std::runtime_error{std::format("'{}' is not a valid url", url)};
+    }
+
+    auto socket = std::make_shared<WebSocketSession>();
+    socket->session.reset(WinHttpOpen(L"spyglass", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
+                                      WINHTTP_NO_PROXY_BYPASS, 0));
+    if (!socket->session) {
+        throw std::runtime_error{"WinHttpOpen failed"};
+    }
+    WinHttpSetTimeouts(socket->session.get(), timeout_ms, timeout_ms, timeout_ms, timeout_ms);
+    socket->connection.reset(WinHttpConnect(socket->session.get(),
+                                            std::wstring{parts.lpszHostName, parts.dwHostNameLength}.c_str(),
+                                            parts.nPort, 0));
+    if (!socket->connection) {
+        throw std::runtime_error{"WinHttpConnect failed"};
+    }
+
+    const auto target = std::wstring{parts.lpszUrlPath, parts.dwUrlPathLength} +
+                        std::wstring{parts.lpszExtraInfo, parts.dwExtraInfoLength};
+    const WinHttpHandle request{WinHttpOpenRequest(socket->connection.get(), L"GET", target.c_str(), nullptr,
+                                                   WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                                   parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0)};
+    if (!request || !WinHttpSetOption(request.get(), WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
+        throw std::runtime_error{"WinHttpOpenRequest failed"};
+    }
+
+    std::string header_text;
+    for (const auto &[name, value] : headers) {
+        header_text += std::format("{}: {}\r\n", name, value);
+    }
+    const auto wide_headers = wide(header_text);
+    if (!WinHttpSendRequest(request.get(), wide_headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : wide_headers.c_str(),
+                            static_cast<DWORD>(-1), WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(request.get(), nullptr)) {
+        throw std::runtime_error{std::format("the WebSocket connection failed, error {}", GetLastError())};
+    }
+    socket->socket.reset(WinHttpWebSocketCompleteUpgrade(request.get(), 0));
+    if (!socket->socket) {
+        throw std::runtime_error{"the server did not upgrade the connection to a WebSocket"};
+    }
+    DWORD no_timeout = 0;
+    WinHttpSetOption(socket->socket.get(), WINHTTP_OPTION_RECEIVE_TIMEOUT, &no_timeout, sizeof(no_timeout));
+
+    const std::lock_guard lock{g_sockets_mutex};
+    const auto handle = g_next_socket++;
+    g_sockets.emplace(handle, std::move(socket));
+    return handle;
+}
+
+void websocket_send(const int handle, const std::string_view data, const bool binary)
+{
+    const auto socket = socket_of(handle);
+    const std::lock_guard lock{socket->send_mutex};
+    const auto error = WinHttpWebSocketSend(
+        socket->socket.get(),
+        binary ? WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE : WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE,
+        const_cast<char *>(data.data()), static_cast<DWORD>(data.size()));
+    if (error != ERROR_SUCCESS) {
+        throw std::runtime_error{std::format("the WebSocket send failed, error {}", error)};
+    }
+}
+
+WebSocketMessage websocket_receive(const int handle)
+{
+    const auto socket = socket_of(handle);
+    WebSocketMessage message;
+    std::array<char, 8192> chunk{};
+    for (;;) {
+        DWORD read = 0;
+        WINHTTP_WEB_SOCKET_BUFFER_TYPE type{};
+        const auto error = WinHttpWebSocketReceive(socket->socket.get(), chunk.data(),
+                                                   static_cast<DWORD>(chunk.size()), &read, &type);
+        if (error != ERROR_SUCCESS || type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
+            message = {};
+            message.closed = true;
+            message.code = 1006;
+            if (error == ERROR_SUCCESS) {
+                USHORT status = 0;
+                DWORD length = 0;
+                std::array<char, 123> reason{};
+                WinHttpWebSocketQueryCloseStatus(socket->socket.get(), &status, reason.data(),
+                                                 static_cast<DWORD>(reason.size()), &length);
+                message.code = status;
+                message.data.assign(reason.data(), length);
+                WinHttpWebSocketClose(socket->socket.get(), status, nullptr, 0);
+            }
+            const std::lock_guard lock{g_sockets_mutex};
+            g_sockets.erase(handle);
+            return message;
+        }
+        message.data.append(chunk.data(), read);
+        message.binary = type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
+                         type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE;
+        if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
+            type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) {
+            return message;
+        }
+    }
+}
+
+void websocket_close(const int handle, const int code, const std::string_view reason)
+{
+    const auto socket = socket_of(handle);
+    const std::lock_guard lock{socket->send_mutex};
+    WinHttpWebSocketShutdown(socket->socket.get(), static_cast<USHORT>(code), const_cast<char *>(reason.data()),
+                             static_cast<DWORD>(reason.size()));
+}
+
 ProcessResult run_process(const std::string &file, const std::vector<std::string> &args,
                           const std::filesystem::path &cwd, const int timeout_ms)
 {
@@ -234,6 +391,26 @@ ProcessResult run_process(const std::string &file, const std::vector<std::string
 HttpResponse http_request(const HttpRequest &, int)
 {
     throw std::runtime_error{"fetch is not available on this platform"};
+}
+
+int websocket_open(const std::string &, const std::vector<std::pair<std::string, std::string>> &, int)
+{
+    throw std::runtime_error{"WebSocket is not available on this platform"};
+}
+
+void websocket_send(int, std::string_view, bool)
+{
+    throw std::runtime_error{"WebSocket is not available on this platform"};
+}
+
+WebSocketMessage websocket_receive(int)
+{
+    throw std::runtime_error{"WebSocket is not available on this platform"};
+}
+
+void websocket_close(int, int, std::string_view)
+{
+    throw std::runtime_error{"WebSocket is not available on this platform"};
 }
 
 ProcessResult run_process(const std::string &file, const std::vector<std::string> &args,
