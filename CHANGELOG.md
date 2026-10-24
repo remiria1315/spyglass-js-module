@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `packet.send` takes `subClient` (0 to 3), which sets the sub-client bits in the packet header. It does not log a
   second player in.
+- `examples/modules/subclient-login.js` replays the connection request of the client's own login as a SubClientLogin
+  for sub-client 1. It is untested, and a server may refuse the duplicate identity.
 
 ## [0.5.0] - 2026-10-23
 
