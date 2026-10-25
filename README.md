@@ -57,3 +57,5 @@ import { packet, Packets } from "spyglass";
 packet.subscribe(Packets.textPacket, (pkt, ctx, cancel, override) => {
   cancel();
 }, { direction: "c2s" });
+```
+[詳細はこちら](docs/modules.md)
