@@ -82,7 +82,7 @@ struct ServerFrame {
 std::vector<ServerFrame> g_injected_server;
 
 constexpr std::array kServerbound{1, 4, 8, 69, 77, 129, 144, 152, 193};
-constexpr std::array kClientbound{2, 3, 5, 6, 7, 143};
+constexpr std::array kClientbound{2, 3, 5, 6, 7, 79, 118, 143};
 
 spyglass::script::Side side_of(const void *object, const int id, const bool sender)
 {
@@ -432,6 +432,9 @@ void IPacketHandlerDispatcher::handleDetour(const NetworkIdentifier &id, NetEven
         auto result = spyglass::read_no_header(*created, stream, *ctx, static_cast<SubClientId>(0));
         if (result.asExpected().has_value()) {
             static_cast<const IPacketHandlerDispatcher *>(created->handler())->handle(id, callback, created);
+        }
+        else {
+            spyglass::report_error(std::format("Injected packet {} read failed: {}", injected_id, error_of(result).dump()));
         }
     }
     g_delivering = false;
