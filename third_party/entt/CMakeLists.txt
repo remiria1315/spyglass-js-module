@@ -10,7 +10,6 @@ FetchContent_Declare(entt_4_0
         SOURCE_SUBDIR do-not-add-subdirectory
         EXCLUDE_FROM_ALL)
 
-FetchContent_MakeAvailable(entt_3_16 entt_4_0)
 FetchContent_Declare(entt_4_1
         GIT_REPOSITORY https://github.com/skypjack/entt.git
         GIT_TAG 1dcd7aab6548786f7672ff578639188bd2f0d837
@@ -35,7 +34,6 @@ function(entt_for_client version out)
         message(FATAL_ERROR "1.26.40 is the oldest client spyglass carries patterns for, got ${version}")
     elseif (version VERSION_LESS 1.26.50)
         set(${out} EnTT::v3_16 PARENT_SCOPE)
-    else ()
     elseif (version VERSION_LESS 1.26.70)
         set(${out} EnTT::v4_0 PARENT_SCOPE)
     else ()
