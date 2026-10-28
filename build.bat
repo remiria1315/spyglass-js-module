@@ -10,7 +10,7 @@ for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio
 
 if not exist build mkdir build
 if exist "build\%PRESET%" goto configured
-if "%CLIENTS%"=="" set CLIENTS=1.26.50
+if "%CLIENTS%"=="" set CLIENTS=1.26.60
 cmake --preset %PRESET% -DMINECRAFT_CLIENTS=%CLIENTS% > "%LOG%" 2>&1
 if errorlevel 1 goto failed
 :configured
