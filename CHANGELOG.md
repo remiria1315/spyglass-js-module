@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added support for the 1.26.60 release client and the 1.26.70 preview client for capturing failed packets. The
-  pattern that lets modules see, change and send sent packets is only cut for the 1.26.51 release client, and the
-  1.26.70 preview client has none.
+- Added support for the 1.26.60 release client and the 1.26.70 preview client for capturing failed packets. Modules can
+  see, change and send sent packets on the 1.26.51 and 1.26.60 release clients, and cannot on the 1.26.70 preview
+  client.
 - `packet.send` takes `subClient` (0 to 3), which sets the sub-client bits in the packet header. It does not log a
   second player in.
 - `examples/modules/subclient-login.js` replays the connection request of the client's own login as a SubClientLogin
