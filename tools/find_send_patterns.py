@@ -61,6 +61,8 @@ def main():
     parser.add_argument("exe")
     parser.add_argument("--top", type=int, default=3)
     parser.add_argument("--memory", action="store_true")
+    parser.add_argument("--disasm", type=lambda s: int(s, 0))
+    parser.add_argument("--out", default="send_disasm.txt")
     args = parser.parse_args()
 
     if args.memory:
@@ -79,6 +81,17 @@ def main():
     starts = {begin for begin, _ in functions}
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     md.detail = True
+
+    if args.disasm is not None:
+        begin, end = next(((b, e) for b, e in functions if b <= args.disasm < e), (None, None))
+        if begin is None:
+            sys.exit(f"rva 0x{args.disasm:x} is not inside a function of the exception table")
+        with open(args.out, "w") as file:
+            file.write(f"function rva 0x{begin:x}, size 0x{end - begin:x}\n")
+            for insn in md.disasm(image[begin:end], begin):
+                file.write(f"+0x{insn.address - begin:04x}  {insn.address:08x}  {insn.bytes.hex(' '):<32} {insn.mnemonic} {insn.op_str}\n")
+        print(f"wrote the disassembly of 0x{begin:x} to {args.out}")
+        return
 
     ranked = []
     for begin, end in functions:
