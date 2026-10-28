@@ -1,0 +1,17 @@
+{
+  "name": "bedrock-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dump": "node dump.js",
+    "find-send": "node find_send.js"
+  },
+  "dependencies": {
+    "capstone-wasm": "^1.0.3",
+    "koffi": "^3.3.5"
+  },
+  "engines": {
+    "node": ">=18.3.0"
+  }
+}
