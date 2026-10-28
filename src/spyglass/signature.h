@@ -5,7 +5,7 @@
 #include "bedrock/version.h"
 
 // Cut against Minecraft.Windows.exe 1.26.40.5, 1.26.44.3, 1.26.50.27,
-// 1.26.51.1, 1.26.60.21 and 1.26.60.30, and against the x86_64
+// 1.26.51.1, 1.26.60.5, 1.26.60.21, 1.26.60.30 and 1.26.70.21, and against the x86_64
 // libminecraftpe.so of the 1.26.44.3 Android release. None of them name these
 // functions at runtime. The Windows client carries RTTI for webrtc only, and
 // the Android .dynsym drops every game symbol, so both are located the same
@@ -40,8 +40,9 @@
 // 3. the helper has exactly one caller, the NetworkSystem::runEvents packet
 // lambda. it is 0x251f
 //    bytes on 1.26.40.5, 0x2080 on 1.26.44.3 and 0x1ef3 on 1.26.50.27, and it
-//    takes each packet off the peer, creates it and reads it. it is 0x28bc
-//    bytes on 1.26.60.21 and 0x280f on 1.26.60.30, which inline the read
+//    takes each packet off the peer, creates it and reads it. it is 0x2931
+//    bytes on 1.26.60.5, 0x28bc on 1.26.60.21, and 0x280f on 1.26.60.30 and
+//    1.26.70.21, which inline the read
 // 4. createPacket is the callee whose head bounds-checks the packet id and
 // dispatches through a
 //    rip-relative jump table: cmp <id32>, <max> / ja / lea <r>, [rip+table] /
@@ -133,8 +134,6 @@ constexpr Signatures kClient{
 constexpr Signatures kClient{
     .name = MINECRAFT_CLIENT,
     .create_packet = "56 48 83 EC 20 48 89 CE 81 FA ? 01 00 00 77 ? 89 D0 48 "
-                     "8D 0D ? ? ? ? 48 63 04 81 48 01 C8 FF E0 "
-                     "0F 57 C0 0F 11 06 48 89 F0 48 83 C4 20 5E",
     .send = "55 41 57 41 56 41 55 41 54 56 57 53 48 81 EC 08 01 00 00 48 8D AC "
             "24 80 00 00 00 48 C7 85 80 00 00 00 FE FF FF FF 45 89 CD 4C 89 C6 "
             "48 89 D7 48 89 CB 48 8D 4D B0 41 B8 B0 00 00 00 E8 ? ? ? ? 48 8B 0D "
