@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-28
+
 ### Added
 
 - Added support for the 1.26.60 release client and the 1.26.70 preview client for capturing failed packets. Modules can
@@ -282,7 +284,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An injector that asks for elevation itself and grants the payload the rights a packaged app
   needs before loading it into the client.
 
-[Unreleased]: https://github.com/remiria1315/spyglass-js-module/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/remiria1315/spyglass-js-module/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/remiria1315/spyglass-js-module/compare/v0.5.0...v0.5.5
 [0.5.0]: https://github.com/remiria1315/spyglass-js-module/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/remiria1315/spyglass-js-module/compare/0.0.0...v0.4.0
 [0.3.3]: https://github.com/EndstoneMC/spyglass/compare/v0.3.2...v0.3.3
