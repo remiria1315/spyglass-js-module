@@ -269,7 +269,7 @@ so grant it only to modules you trust.
 - A callback that runs longer than 100 ms is interrupted, and a module takes 2 s at most to load.
 - All modules share 128 MB.
 - An error in a callback is written to the modules window, and the packet carries on.
-- Cancelling a packet the client sends needs the send hook, which is cut against the Windows 1.26.50 release client. On a client without it, the errors window says so, `cancel()` does nothing, and a `!!module` message is sent to the server.
+- Cancelling a packet the client sends needs the send hook, which is cut against the Windows 1.26.50 and 1.26.60 release clients. On a client without it, the errors window says so, `cancel()` does nothing, and a `!!module` message is sent to the server.
 
 ## Examples
 

@@ -62,8 +62,11 @@
 // NetworkSystem::_sendInternal is where a serialized packet is handed to the
 // connection's peer. It is found from NetworkSystem::send, which serializes the
 // packet through slot 5 of its vtable and then calls it with the identifier, the
-// packet and the send buffer. Cut against the Windows 1.26.50 release client,
-// where send is 0x3f0 bytes and its last call is _sendInternal.
+// packet and the send buffer. Cut against the Windows 1.26.50 and 1.26.60.5
+// release clients, where send is 0x3f0 and 0x3df bytes. _sendInternal is the
+// call that passes those three, the last call on 1.26.50 and the last one
+// before the epilogue on 1.26.60.5, whose cold paths follow the ret. The
+// 1.26.60.5 serialization call goes through the control flow guard dispatcher.
 //
 // MouseDevice::feed is where every mouse channel meets, so the overlay stops
 // the game's mouse there rather than at one transport. Windows only: the
@@ -145,7 +148,23 @@ constexpr Signatures kClient{
 
 #if MINECRAFT_VERSION_HEX < MINECRAFT_VERSION(1, 26, 70, 0)
 
-// 1.26.40.5, 1.26.44.3, 1.26.51.1, 1.26.60.5
+#if MINECRAFT_VERSION_HEX >= MINECRAFT_VERSION(1, 26, 60, 0)
+
+constexpr Signatures kClient{
+    .name = MINECRAFT_CLIENT,
+    .create_packet = "56 48 83 EC 20 48 89 CE 81 FA ? 01 00 00 77 ? 89 D0 48 "
+                     "8D 0D ? ? ? ? 48 63 04 81 48 01 C8 FF E0 "
+                     "0F 57 C0 0F 11 06 48 89 F0 48 83 C4 20 5E",
+    .send = "55 41 57 41 56 41 55 41 54 56 57 53 48 81 EC 08 01 00 00 48 8D AC "
+            "24 80 00 00 00 48 C7 85 80 00 00 00 FE FF FF FF 45 89 CD 4C 89 C6 "
+            "48 89 CB 48 8D 4D A8 41 B8 B0 00 00 00 48 89 55 78 E8 ? ? ? ? 48 8B 0D "
+            "? ? ? ? 48 8B 01 48 8B 40 08 BA B8 00 00 00 FF 15 ? ? ? ?",
+    .send_internal_call = "48 89 D9 48 8B 55 78 49 89 F0 E8",
+};
+
+#else
+
+// 1.26.40.5, 1.26.44.3, 1.26.51.1
 constexpr Signatures kClient{
     .name = MINECRAFT_CLIENT,
     .create_packet = "56 48 83 EC 20 48 89 CE 81 FA ? 01 00 00 77 ? 89 D0 48 "
@@ -157,6 +176,8 @@ constexpr Signatures kClient{
             "? ? ? ? 48 8B 01 48 8B 40 08 BA B8 00 00 00 FF 15 ? ? ? ?",
     .send_internal_call = "48 89 D9 48 89 FA 49 89 F0 E8",
 };
+
+#endif
 
 #else
 #error                                                                         \
