@@ -134,6 +134,8 @@ constexpr Signatures kClient{
 constexpr Signatures kClient{
     .name = MINECRAFT_CLIENT,
     .create_packet = "56 48 83 EC 20 48 89 CE 81 FA ? 01 00 00 77 ? 89 D0 48 "
+                     "8D 0D ? ? ? ? 48 63 04 81 48 01 C8 FF E0 "
+                     "0F 57 C0 0F 11 06 48 89 F0 48 83 C4 20 5E",
     .send = "55 41 57 41 56 41 55 41 54 56 57 53 48 81 EC 08 01 00 00 48 8D AC "
             "24 80 00 00 00 48 C7 85 80 00 00 00 FE FF FF FF 45 89 CD 4C 89 C6 "
             "48 89 D7 48 89 CB 48 8D 4D B0 41 B8 B0 00 00 00 E8 ? ? ? ? 48 8B 0D "
