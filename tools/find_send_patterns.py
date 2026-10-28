@@ -3,6 +3,7 @@ import itertools
 import re
 import struct
 import sys
+import zlib
 
 import capstone
 import pefile
@@ -59,20 +60,22 @@ def main():
     )
     parser.add_argument("exe")
     parser.add_argument("--top", type=int, default=3)
+    parser.add_argument("--memory", action="store_true")
     args = parser.parse_args()
 
-    pe = pefile.PE(args.exe, fast_load=True)
-    image = pe.get_memory_mapped_image()
+    if args.memory:
+        image = open(args.exe, "rb").read()
+        pe = pefile.PE(data=image, fast_load=True)
+    else:
+        pe = pefile.PE(args.exe, fast_load=True)
+        image = pe.get_memory_mapped_image()
     directory = pe.OPTIONAL_HEADER.DATA_DIRECTORY[EXCEPTION_DIRECTORY]
     if directory.Size == 0:
         sys.exit("the file has no exception table, so function boundaries are unknown")
-    functions = [
-        (begin, end)
-        for begin, end, _ in struct.iter_unpack(
-            "<III", image[directory.VirtualAddress:directory.VirtualAddress + directory.Size]
-        )
-        if begin != 0
-    ]
+    entries = list(
+        struct.iter_unpack("<III", image[directory.VirtualAddress:directory.VirtualAddress + directory.Size])
+    )
+    functions = [(begin, end) for begin, end, _ in entries if 0 < begin < end <= len(image)]
     starts = {begin for begin, _ in functions}
     md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_64)
     md.detail = True
@@ -88,7 +91,19 @@ def main():
         ranked.append((score, similarity, slot_five, begin, end))
     ranked.sort(reverse=True)
     if not ranked:
-        sys.exit("no function of a plausible size was found")
+        sample = b"".join(
+            image[s.VirtualAddress:s.VirtualAddress + min(s.Misc_VirtualSize, 1 << 20)]
+            for s in pe.sections
+            if s.Characteristics & EXECUTE_FLAG
+        )
+        compressed = len(zlib.compress(sample)) / max(len(sample), 1)
+        print("no function of a plausible size was found")
+        print(f"  exception table entries: {len(entries)}, inside the image: {len(functions)}")
+        print(f"  executable sections compress to {compressed:.0%} of their size")
+        if compressed > 0.9 or len(functions) < len(entries) // 2:
+            print("  the code in this file looks encrypted or packed")
+            print("  dump the running game with tools/dump_client.py and run this again with --memory")
+        sys.exit(1)
     if ranked[0][1] < 0.5:
         print("warning: nothing resembles the 1.26.50 send closely, the ranking below rests on structure alone\n")
 
