@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `examples/modules/subclient-login.js` replays the connection request of the client's own login as a SubClientLogin
   for sub-client 1. It is untested, and a server may refuse the duplicate identity.
 
+### Changed
+
+- The Windows payloads built by default target the 1.26.50 and 1.26.60 release clients and the 1.26.70.21 preview
+  client. They no longer target the 1.26.40 release client or the 1.26.60.30 preview client.
+
 ## [0.5.0] - 2026-10-23
 
 ### Added
