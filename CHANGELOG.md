@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `examples/modules/subclient-login.js` replays the connection request of the client's own login as a SubClientLogin
   for sub-client 1. It is untested, and a server may refuse the duplicate identity.
 
+### Fixed
+
+- `World` reads the skin in the player list again. The animated images, the persona and tint colour counts and the
+  flags after the persona data were read with the wrong layout, which ended in `read past the end`. `SkinImage.data` is
+  now a `Uint8Array`, `animatedImageData` is a list and `isPersonaSkin` is new.
+
 ### Changed
 
 - The Windows payloads built by default target the 1.26.50 and 1.26.60 release clients and the 1.26.70.21 preview

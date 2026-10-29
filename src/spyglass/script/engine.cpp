@@ -1444,7 +1444,7 @@ export let World;
       return {
         width: reader.uint32(),
         height: reader.uint32(),
-        data: reader.string(),
+        data: reader.bytes(reader.varuint32()),
       };
     }
     //#region serializeSkin
@@ -1455,14 +1455,21 @@ export let World;
         resourcePatch: reader.string(),
         imageData: this.#skinData(reader),
         //#region AnimatedImageData
-        animatedImageData: {
-          skinimage: this.#skinData(reader),
-          animatedTextureType: ["none", "face", "body32", "body128"][
-            reader.varuint32()
-          ],
-          frames: reader.float32(),
-          animationExpression: ["linear", "blinking"][reader.varuint32()],
-        },
+        animatedImageData: (() => {
+          const size = reader.varuint32();
+          const images = [];
+          for (let i = 0; i < size; i++) {
+            images.push({
+              skinimage: this.#skinData(reader),
+              animatedTextureType: ["none", "face", "body32", "body128"][
+                reader.uint32()
+              ],
+              frames: reader.float32(),
+              animationExpression: ["linear", "blinking"][reader.uint32()],
+            });
+          }
+          return images;
+        })(),
         capeImageData: this.#skinData(reader),
         geometrydata: reader.string(),
         geometryDataMinEngineVersion: reader.string(),
@@ -1473,7 +1480,7 @@ export let World;
         skinColor: reader.int32(),
         //#region personaPieces
         personaPieces: (() => {
-          const size = reader.uint32();
+          const size = reader.varuint32();
           const piece = {};
           for (let i = 0; i < size; i++) {
             piece[i] = {
@@ -1488,13 +1495,13 @@ export let World;
         })(),
         //#region personaTintColors
         personaTintColors: (() => {
-          const size = reader.uint32();
+          const size = reader.varuint32();
           const piece = {};
           for (let i = 0; i < size; i++) {
             piece[i] = {
               paletteType: reader.varuint32(),
               paletteColors: (() => {
-                const size2 = reader.uint32();
+                const size2 = reader.varuint32();
                 const colors = new Array(size2);
                 for (let j = 0; j < size2; j++) {
                   colors[j] = [
@@ -1511,6 +1518,7 @@ export let World;
           return piece;
         })(),
         isPremium: reader.bool(),
+        isPersonaSkin: reader.bool(),
         isPersonaCapeOnClassicSkin: reader.bool(),
         isPrimaryUser: reader.bool(),
         overridesPlayerAppearance: reader.bool(),
@@ -1721,7 +1729,7 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     sendCommand(line: string): void;
     sendMessage(text: string): void;
   }
-  export interface SkinImage { width: number; height: number; data: string }
+  export interface SkinImage { width: number; height: number; data: Uint8Array }
   export interface PersonaPiece { id: string; type: string; packId: string; isDefault: boolean; productId: string }
   export interface PersonaTintColor { paletteType: number; paletteColors: [string, string, string, string][] }
   export interface SerializedSkin {
@@ -1733,7 +1741,7 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
       animatedTextureType: "none" | "face" | "body32" | "body128";
       frames: number;
       animationExpression: "linear" | "blinking";
-    };
+    }[];
     capeImageData: SkinImage;
     geometrydata: string;
     geometryDataMinEngineVersion: string;
@@ -1745,6 +1753,7 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     personaPieces: Record<number, PersonaPiece>;
     personaTintColors: Record<number, PersonaTintColor>;
     isPremium: boolean;
+    isPersonaSkin: boolean;
     isPersonaCapeOnClassicSkin: boolean;
     isPrimaryUser: boolean;
     overridesPlayerAppearance: boolean;
