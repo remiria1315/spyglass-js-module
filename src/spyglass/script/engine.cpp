@@ -1416,6 +1416,10 @@ const inputDatas = {
   
     //#region sendMessage
     sendMessage(str) {
+      if(!this.name || !this.xuid) {
+        console.error("name or xuid is not set, please rejoin");
+        return;
+      };
       const body = new BinaryWriter()
         .byte(0)
         .byte(1)
