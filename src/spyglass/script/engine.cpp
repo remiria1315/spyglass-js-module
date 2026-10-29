@@ -781,7 +781,8 @@ export let World;
 
   LocalPlayer = class {
     constructor() {
-      this.name = "remiria1315";
+      this.name=""//@TODO
+      this.xuid="0"
       this.pos = { x: 0, y: 0, z: 0 };
       this.rot = { x: 0, y: 0 };
       this.move = { x: 0, y: 0 };
@@ -907,21 +908,22 @@ export let World;
       );
     }
     //#region sendMessage
-    sendMessage(str) {
-      const body = new BinaryWriter()
-        .byte(0)
-        .byte(1)
-        .bool(true)
-        .string(this.name)
-        .string(str)
-        // .byte(0)
-        .string("2535456620588248")
-        .byte(0)
-        .byte(0)
-        .toBytes();
+    //@TODO
+    // sendMessage(str) {
+    //   const body = new BinaryWriter()
+    //     .byte(0)
+    //     .byte(1)
+    //     .bool(true)
+    //     .string(this.name)
+    //     .string(str)
+    //     // .byte(0)
+    //     .string("2535456620588248")
+    //     .byte(0)
+    //     .byte(0)
+    //     .toBytes();
 
-      packet.send(Packets.textPacket, body, { direction: "c2s" });
-    }
+    //   packet.send(Packets.textPacket, body, { direction: "c2s" });
+    // }
   };
   //#endregion
 
