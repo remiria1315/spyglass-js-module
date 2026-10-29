@@ -768,21 +768,25 @@ export let LocalPlayer;
 export let World;
 {
   //#region LocalPlayer
-  const inputDatas = {
-    6: "jumping",
-    8: "sneaking",
-    10: "up",
-    11: "down",
-    12: "left",
-    13: "right",
-    20: "sprinting",
-    38: "emoting",
-  };
+  //#region constants
+const inputDatas = {
+  6: "jumping",
+  8: "sneaking",
+  10: "up",
+  11: "down",
+  12: "left",
+  13: "right",
+  20: "sprinting",
+  38: "emoting",
+};
+//#endregion
 
-  LocalPlayer = class {
+//#region LocalPlayer
+  class LocalPlayer {
     constructor() {
-      this.name=""//@TODO
-      this.xuid="0"
+      //#region state
+      this.name = "remiria1315"; // プレースホルダー
+      this.xuid = "0"; // あとで変更する
       this.pos = { x: 0, y: 0, z: 0 };
       this.rot = { x: 0, y: 0 };
       this.move = { x: 0, y: 0 };
@@ -797,6 +801,69 @@ export let World;
         sprinting: false,
         emoting: false,
       };
+      this.hand = {};
+      this.waiting = [];
+      this.commandQueue = [];
+      this.lastPacketTime = 0;
+      this.hasTriggeredInSession = false;
+      this.hasCancelledInSession = false;
+      //#endregion  
+
+      //#region playerListPacket
+      this.unsubPlayerList = packet.subscribe(
+        Packets.playerListPacket,
+        (pkt, ctx) => {
+          const reader = new BinaryReader(ctx.body);
+          const action = reader.byte();
+          const entriesCount = reader.varuint32();
+  
+          if (action == 0) {
+            for (let i = 0; i < entriesCount; i++) {
+              reader.uint64();
+              reader.uint64();
+            }
+          } else if (action == 1) {
+            for (let i = 0; i < entriesCount; i++) {
+              reader.uint64();
+              reader.uint64();
+              reader.svarint64();
+              const playerName = reader.string();
+              const xuid = reader.string();
+              reader.string();
+              reader.string();
+              reader.int32();
+              this.#skipSkin(reader);
+              reader.bool();
+              const isHost = reader.bool();
+              reader.bool();
+              reader.int32();
+              if (isHost) {
+                this.xuid = xuid;
+                this.name = playerName;
+              }
+            }
+          }
+        },
+        { direction: "s2c" }
+      );
+      //#endregion  
+
+      //#region eventHandlers
+      this.event_Click = (ev) => {
+        return false;
+      };
+      this.event_Attack = (ev) => {};
+      this.event_RightClick = () => {};
+      this.event_Drop = () => {};
+      this.event_Use = (ev) => {
+        return false;
+      };
+      this.event_Destroy = (ev) => {
+        return false;
+      };
+      this.event_Animation = (ev) => {};
+      //#endregion  
+
       //#region playerAuthInput
       packet.subscribe(
         Packets.playerAuthInputPacket,
@@ -804,7 +871,7 @@ export let World;
           const reader = new BinaryReader(ctx.body);
           const rotx = reader.float32();
           const roty = reader.float32();
-          this.rot = { x: rotx, y: roty };
+          this.rot = { x: rotx, y: roty };  
 
           const posx = reader.float32();
           const posy = reader.float32();
@@ -813,77 +880,364 @@ export let World;
             x: posx,
             y: posy,
             z: posz,
-          };
+          };  
 
           const movex = reader.float32();
           const movey = reader.float32();
           this.move = {
             x: movex,
             y: movey,
-          };
+          };  
 
           const playerHeadRotation = reader.float32();
           this.playerheadRot = playerHeadRotation;
-          const bits = reader.bitset(66, "list");
+          const bits = reader.bitset(65, "list");
           const inputData = {};
           Object.entries(inputDatas).forEach(([k, v]) => {
             inputData[v] = ((bits >> BigInt(parseInt(k))) & 1n) === 1n;
           });
-          this.inputData = inputData;
         },
         { direction: "c2s" },
       );
-      //#endregion
+      //#endregion  
 
-      //#region Request
-      this.requestTail = null;
-      this.waiting = [];
+      //#region mobEquipment
       packet.subscribe(
-        Packets.commandRequestPacket,
-        (pkt, ctx) => {
-          const reader = new BinaryReader(ctx.body);
-          reader.string();
-          this.requestTail = reader.bytes(reader.remaining);
-          for (const line of this.waiting.splice(0)) {
-            this.sendCommand(line);
+        Packets.mobEquipmentPacket,
+        (pkt, ctx, c, o) => {
+          const reader = new BinaryReader(ctx.body);  
+
+          const actorRuntimeId = reader.varuint64();
+          const id = reader.varint();
+          if (id === 0) {
+            this.hand = {};
+            return;
+          } 
+
+          const count = reader.uint16();
+          const aux = reader.varuint32(); 
+
+          const hasNetId = reader.bool();
+          if (hasNetId) reader.varint();  
+
+          const blockRuntimeId = reader.varint(); 
+
+          const remainingBytes = reader.bytes(reader.remaining);
+          let nbtStartIndex = -1;
+          for (let i = 0; i < remainingBytes.length - 1; i++) {
+            if (remainingBytes[i] === 0xff && remainingBytes[i + 1] === 0x01) {
+              nbtStartIndex = i;
+              break;
+            }
+          } 
+
+          let compound = null;
+          let slot = 0;
+          let selection = 0;
+          let containerId = 0;  
+
+          if (nbtStartIndex !== -1) {
+            const nbtBytes = remainingBytes.slice(nbtStartIndex);
+            const nbtReader = new BinaryReader(nbtBytes); 
+
+            nbtReader.byte();
+            nbtReader.byte(); 
+
+            const parseTag = (r, type) => {
+              switch (type) {
+                case 1:
+                  return r.byte();
+                case 2:
+                  return r.int16();
+                case 3:
+                  return r.int32();
+                case 8: {
+                  const len = r.uint16();
+                  const buf = r.bytes(len);
+                  let s = "";
+                  for (let i = 0; i < buf.length; i++)
+                    s += String.fromCharCode(buf[i]);
+                  return s;
+                }
+                case 10: {
+                  const obj = {};
+                  while (r.remaining > 0) {
+                    const t = r.byte();
+                    if (t === 0) break;
+                    const nameLen = r.uint16();
+                    const nameBuf = r.bytes(nameLen);
+                    let name = "";
+                    for (let i = 0; i < nameBuf.length; i++)
+                      name += String.fromCharCode(nameBuf[i]);
+                    obj[name] = parseTag(r, t);
+                  }
+                  return obj;
+                }
+                default:
+                  return null;
+              }
+            };
+  
+            const rootType = nbtReader.byte();
+            const rootNameLen = nbtReader.uint16();
+            nbtReader.bytes(rootNameLen);
+  
+            compound = parseTag(nbtReader, rootType);
+  
+            slot = nbtReader.uint8();
+            selection = nbtReader.uint8();
+            containerId = nbtReader.uint8();
           }
+  
+          this.hand = {
+            id,
+            count,
+            aux,
+            blockRuntimeId,
+            compound,
+            slot,
+            selection,
+            containerId,
+          };
         },
         { direction: "c2s" },
       );
       //#endregion
-      //#region eventFunctions
-      this.event_Click = (ev) => {};
-      this.event_Attack = (ev) => {};
-      this.event_RightClick = () => {};
-      this.event_Drop = () => {};
-      this.event_Use = (ev) => {};
-      this.event_Animation = (ev) => {};
+  
+      //#region playerAction
+      packet.subscribe(Packets.playerActionPacket, (pkt, ctx, c, o) => {
+        const reader = new BinaryReader(ctx.body);
+        const playerId = reader.varuint64();
+        const action = reader.varint();
+        const blockx = reader.varint();
+        const blocky = reader.varint();
+        const blockz = reader.varint();
+        const resultx = reader.varint();
+        const resulty = reader.varint();
+        const resultz = reader.varint();
+        const face = reader.varint();
+        if ([26, 13].includes(action)) {
+          if (
+            this.event_Destroy({
+              block: {
+                x: blockx,
+                y: blocky,
+                z: blockz,
+              },
+              result: {
+                x: resultx,
+                y: resulty,
+                z: resultz,
+              },
+              face,
+            })
+          ) {
+            c();
+            return;
+          }
+        }
+      });
       //#endregion
-      //#region eventFromAnimate
+  
+      //#region inventoryTransaction
+      packet.subscribe(Packets.inventoryTransactionPacket, (pkt, ctx, c, o) => {
+        const now = Date.now();
+  
+        if (now - this.lastPacketTime > 100) {
+          this.hasTriggeredInSession = false;
+          this.hasCancelledInSession = false;
+        }
+  
+        this.lastPacketTime = now;
+        if (this.hasCancelledInSession) {
+          c();
+        }
+        if (this.hasTriggeredInSession) {
+          return;
+        }
+  
+        this.hasTriggeredInSession = true;
+        const reader = new BinaryReader(ctx.body);
+        const lrid = reader.varint();
+        const hasLegacySetItemSlot = reader.bool();
+        let containerType = "";
+        if (hasLegacySetItemSlot) {
+          const size = reader.varint();
+          for (let i = 0; i < size; i++) {
+            const containerType = [
+              //#region enums
+              "AnvilInputContainer",
+              "AnvilMaterialContainer",
+              "AnvilResultPreviewContainer",
+              "SmithingTableInputContainer",
+              "SmithingTableMaterialContainer",
+              "SmithingTableResultPreviewContainer",
+              "ArmorContainer",
+              "LevelEntityContainer",
+              "BeaconPaymentContainer",
+              "BrewingStandInputContainer",
+              "BrewingStandResultContainer",
+              "BrewingStandFuelContainer",
+              "CombinedHotbarAndInventoryContainer",
+              "CraftingInputContainer",
+              "CraftingOutputPreviewContainer",
+              "RecipeConstructionContainer",
+              "RecipeNatureContainer",
+              "RecipeItemsContainer",
+              "RecipeFoodContainer",
+              "RecipeBlocksContainer",
+              "RecipeFurnaceItemsContainer",
+              "RecipeSearchContainer",
+              "RecipeSearchBarContainer",
+              "RecipeEquipmentContainer",
+              "RecipeBookContainer",
+              "EnchantingInputContainer",
+              "EnchantingMaterialContainer",
+              "FurnaceFuelContainer",
+              "FurnaceIngredientContainer",
+              "FurnaceResultContainer",
+              "HorseEquipContainer",
+              "HotbarContainer",
+              "InventoryContainer",
+              "ShulkerBoxContainer",
+              "TradeIngredient1Container",
+              "TradeIngredient2Container",
+              "TradeResultPreviewContainer",
+              "OffhandContainer",
+              "CompoundCreatorInput",
+              "CompoundCreatorOutputPreview",
+              "ElementConstructorOutputPreview",
+              "MaterialReducerInput",
+              "MaterialReducerOutput",
+              "LabTableInput",
+              "LoomInputContainer",
+              "LoomDyeContainer",
+              "LoomMaterialContainer",
+              "LoomResultPreviewContainer",
+              "BlastFurnaceIngredientContainer",
+              "SmokerIngredientContainer",
+              "Trade2Ingredient1Container",
+              "Trade2Ingredient2Container",
+              "Trade2ResultPreviewContainer",
+              "GrindstoneInputContainer",
+              "GrindstoneAdditionalContainer",
+              "GrindstoneResultPreviewContainer",
+              "StonecutterInputContainer",
+              "StonecutterResultPreviewContainer",
+              "CartographyInputContainer",
+              "CartographyAdditionalContainer",
+              "CartographyResultPreviewContainer",
+              "BarrelContainer",
+              "CursorContainer",
+              "CreatedOutputContainer",
+              "SmithingTableTemplateContainer",
+              "CrafterLevelEntityContainer",
+              "DynamicContainer",
+              "DiscPressBlockContainer",
+              "DiscPressDyeContainer",
+              "DiscPressDiscContainer",
+              "DiscPressResultPreviewContainer",
+              //#endregion
+            ][reader.uint8()];
+            const size_ = reader.varint();
+            reader.bytes(size_);
+          }
+        }
+  
+        const transactionType = reader.varuint32();
+        switch (transactionType) {
+          case 0:
+            break;
+          case 1:
+            break;
+          case 2:
+            const actionsSize = reader.varint();
+            for (let i = 0; i < actionsSize; i++) {
+              const sourceType = reader.varuint32();
+              const containerid = reader.bool() ? reader.int8() : null;
+              const bitFlags = reader.bool() ? reader.varuint32() : null;
+              const slot = reader.varuint32();
+              const fromitem = this.#networkItemStack(reader);
+              const toitem = this.#networkItemStack(reader);
+            }
+            const actiontype = reader.varint();
+            const triggertype = reader.uint8();
+            const position = {
+              x: reader.varint(),
+              y: reader.varint(),
+              z: reader.varint(),
+            };
+            const face = reader.uint8();
+            const slot2 = reader.varint();
+            const hand = reader.uint8();
+            const item = this.#networkItemStack(reader);
+            const fromPosition = {
+              x: reader.float32(),
+              y: reader.float32(),
+              z: reader.float32(),
+            };
+            const clickPosition = {
+              x: reader.float32(),
+              y: reader.float32(),
+              z: reader.float32(),
+            };
+            const targetBlockId = reader.varuint32();
+            const clientInteractPrediction = reader.uint8();
+            const clientCooldownState = reader.uint8();
+            if (
+              this.event_Use({
+                face,
+                item,
+                fromPosition,
+                position,
+                targetBlockId,
+                clickPosition,
+                clientInteractPrediction,
+                clientCooldownState,
+              })
+            ) {
+              this.hasCancelledInSession = true;
+              c();
+            }
+            break;
+          case 3:
+            break;
+          case 4:
+            break;
+        }
+      });
+      //#endregion
+  
+      //#region animate
       packet.subscribe(
         Packets.animatePacket,
         (pkt, ctx, c, o) => {
           const reader = new BinaryReader(ctx.body);
-
+  
           const action = [
             "noAction",
             "swing",
             "wakeUp",
             "criticalHit",
             "MagicCriticalHit",
-          ][reader.uint8()]; // uint8
-          const targetActor = reader.varuint64();
+          ][reader.uint8()];
+          let targetActor = reader.varint64();
+          if (targetActor < 0n) {
+            targetActor += 1n << 64n;
+          }
           const data = reader.float32();
           const swingSource = reader.string();
           const hand = ["mainhand", "offhand"][reader.uint8()];
-          //#region action
-          if (action == "swing" && ["Mine", "Attack"].includes(swingSource)) {
-            this.event_Click({ action, swingSource, hand });
-          }
-          if (action == "swing" && swingSource == "Attack") {
-            this.event_Attack({ action, swingSource, hand });
-          }
-          if (swingSource == "DropItem") {
+  
+          if (action == "swing") {
+            if (["Mine", "Attack"].includes(swingSource)) {
+              if (this.event_Click({ action, swingSource, hand })) {
+                c();
+              }
+            } else if (swingSource == "Attack") {
+              this.event_Attack({ action, swingSource, hand });
+            }
+          } else if (swingSource == "DropItem") {
             this.event_Drop();
           } else if (swingSource == "ThrowItem") {
             this.event_Use();
@@ -894,37 +1248,283 @@ export let World;
         { direction: "c2s" },
       );
       //#endregion
+  
+      //#region commandQueueLoop
+      setInterval(() => {
+        const maxCommands = 20;
+        for (let i = 0; i < maxCommands; i++) {
+          const item = this.commandQueue.shift();
+          if (!item) break;
+  
+          const [line, cb, timeoutMs, resolve, reject] = item;
+  
+          this.#runCommand(line, cb, timeoutMs)
+            .then((result) => resolve(result))
+            .catch((err) => reject(err));
+        }
+      }, 1000 / 64);
+      //#endregion
     }
-    //#region sendCommand
-    sendCommand(line) {
-      if (!this.requestTail) {
-        this.waiting.push(line);
-        return;
+    //#region skin sample
+  #skipSkin(reader) {
+      const image = () => {
+        reader.uint32();
+        reader.uint32();
+        reader.bytes(reader.varuint32());
+      };
+      reader.string();
+      reader.string();
+      image();
+      const animCount = reader.varuint32();
+      for (let i = 0; i < animCount; i++) {
+        image();
+        reader.uint32();
+        reader.float32();
+        reader.uint32();
       }
-      const text = String(line).startsWith("/") ? String(line) : `/${line}`;
-      packet.send(
-        Packets.commandRequestPacket,
-        new BinaryWriter().string(text).bytes(this.requestTail).toBytes(),
-      );
+      image();
+      reader.string();
+      reader.string();
+      reader.string();
+      reader.string();
+      reader.string();
+      reader.uint8();
+      reader.int32();
+      const personaPieces = reader.varuint32();
+      for (let i = 0; i < personaPieces; i++) {
+        reader.string();
+        reader.string();
+        reader.string();
+        reader.bool();
+        reader.string();
+      }
+      const tintColors = reader.varuint32();
+      for (let i = 0; i < tintColors; i++) {
+        reader.string();
+        const colors = reader.varuint32();
+        for (let j = 0; j < colors; j++) reader.string();
+      }
+      reader.bool();
+      reader.bool();
+      reader.bool();
+      reader.bool();
+      reader.bool();
+      reader.string();
+      reader.string();
     }
+    //#endregion
+    //#region sendCommand
+    sendCommand(line, cb = (params, successful) => {}, timeoutMs = 10000) {
+      return new Promise((resolve, reject) => {
+        this.commandQueue.push([line, cb, timeoutMs, resolve, reject]);
+      });
+    }
+  
+    #runCommand(line, cb = (params, successful) => {}, timeoutMs = 10000) {
+      const text = String(line).startsWith("/") ? String(line) : `/${line}`;
+      return new Promise((resolve, reject) => {
+        const rand64 = () =>
+          (BigInt((Math.random() * 2 ** 32) >>> 0) << 32n) |
+          BigInt((Math.random() * 2 ** 32) >>> 0);
+        const requestId = [rand64(), rand64()];
+        let unsub = () => {};
+        let done = false;
+  
+        const finish = (fn, value) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          unsub();
+          fn(value);
+        };
+  
+        const timer = setTimeout(
+          () => finish(reject, new Error(`command timeout: ${text}`)),
+          timeoutMs,
+        );
+  
+        unsub = packet.subscribe(
+          Packets.commandOutputPacket,
+          (pkt, ctx, c, o) => {
+            try {
+              const reader = new BinaryReader(ctx.body);
+  
+              reader.string();
+              reader.uint64();
+              reader.uint64();
+              const reqstr = reader.string();
+              reader.int64();
+  
+              const outputType = reader.string();
+              const successCount = reader.uint32();
+              const size = reader.varuint32();
+  
+              const messages = [];
+              const returns = {};
+              for (let i = 0; i < size; i++) {
+                const messageId = reader.string();
+                const successful = reader.bool();
+                const n = reader.varuint32();
+                const params = [];
+                for (let j = 0; j < n; j++) params.push(reader.string());
+  
+                messages.push({ successful, messageId, params });
+                returns[messageId] = { successful, params };
+                cb(params, successful);
+              }
+  
+              const dataSet = reader.bool() ? reader.string() : null;
+  
+              finish(resolve, {
+                requestId,
+                outputType,
+                successCount,
+                messages,
+                returns,
+                dataSet,
+              });
+            } catch (e) {
+              finish(reject, e);
+            }
+          },
+          { direction: "both" },
+        );
+  
+        try {
+          setTimeout(() => {
+            packet.send(
+              Packets.commandRequestPacket,
+              new BinaryWriter()
+                .string(text)
+                .string("player")
+                .uint64(requestId[0])
+                .uint64(requestId[1])
+                .string("")
+                .int64(0)
+                .bool(false)
+                .string("latest")
+                .toBytes(),
+              { direction: "c2s" },
+            );
+          }, 100);
+        } catch (e) {
+          finish(reject, e);
+        }
+      });
+    }
+    //#endregion
+  
     //#region sendMessage
-    //@TODO
-    // sendMessage(str) {
-    //   const body = new BinaryWriter()
-    //     .byte(0)
-    //     .byte(1)
-    //     .bool(true)
-    //     .string(this.name)
-    //     .string(str)
-    //     // .byte(0)
-    //     .string("2535456620588248")
-    //     .byte(0)
-    //     .byte(0)
-    //     .toBytes();
-
-    //   packet.send(Packets.textPacket, body, { direction: "c2s" });
-    // }
-  };
+    sendMessage(str) {
+      const body = new BinaryWriter()
+        .byte(0)
+        .byte(1)
+        .bool(true)
+        .string(this.name)
+        .string(str)
+        .string(this.xuid)
+        .byte(0)
+        .byte(0)
+        .toBytes();
+  
+      packet.send(Packets.textPacket, body, { direction: "c2s" });
+    }
+    //#endregion
+  
+    //#region networkItemStack
+    #networkItemStack(reader) {
+      const id = reader.varint();
+      if (id === 0) {
+        return { count: 0, aux: 0, runtimeId: 0, nbt: null };
+      }
+  
+      const count = reader.uint16();
+      const aux = reader.varuint32();
+  
+      const hasNetId = reader.bool();
+      if (hasNetId) {
+        reader.varint();
+      }
+  
+      const blockRuntimeId = reader.varint();
+  
+      const nbtSize = reader.int16();
+  
+      if (nbtSize > 0 && nbtSize <= reader.remaining) {
+        const nbtBytes = reader.bytes(nbtSize);
+        const nbtReader = new BinaryReader(nbtBytes);
+  
+        if (
+          nbtBytes.length >= 2 &&
+          nbtBytes[0] === 0xff &&
+          nbtBytes[1] === 0x01
+        ) {
+          nbtReader.byte();
+          nbtReader.byte();
+        }
+  
+        const parseTag = (r, type) => {
+          switch (type) {
+            case 1:
+              return r.byte();
+            case 2:
+              return r.int16();
+            case 3:
+              return r.int32();
+            case 8: {
+              const len = r.uint16();
+              const buf = r.bytes(len);
+              let s = "";
+              for (let i = 0; i < buf.length; i++)
+                s += String.fromCharCode(buf[i]);
+              return s;
+            }
+            case 10: {
+              const obj = {};
+              while (r.remaining > 0) {
+                const t = r.byte();
+                if (t === 0) break;
+                const nameLen = r.uint16();
+                const nameBuf = r.bytes(nameLen);
+                let name = "";
+                for (let i = 0; i < nameBuf.length; i++)
+                  name += String.fromCharCode(nameBuf[i]);
+                obj[name] = parseTag(r, t);
+              }
+              return obj;
+            }
+            default:
+              return null;
+          }
+        };
+  
+        let compound = null;
+        if (nbtReader.remaining > 0) {
+          const rootType = nbtReader.byte();
+          if (rootType === 0x0a) {
+            const rootNameLen = nbtReader.uint16();
+            nbtReader.bytes(rootNameLen);
+            compound = parseTag(nbtReader, rootType);
+          }
+        }
+  
+        return {
+          count,
+          aux,
+          runtimeId: blockRuntimeId,
+          nbt: compound,
+        };
+      } else {
+        return {
+          count,
+          aux,
+          runtimeId: blockRuntimeId,
+          nbt: null,
+        };
+      }
+    }
+    //#endregion
+  }
   //#endregion
 
   //#region World
