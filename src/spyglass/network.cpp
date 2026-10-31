@@ -81,8 +81,9 @@ struct ServerFrame {
 };
 std::vector<ServerFrame> g_injected_server;
 
-constexpr std::array kServerbound{1, 4, 8, 69, 77, 129, 144, 152, 193};
-constexpr std::array kClientbound{2, 3, 5, 6, 7, 79, 118, 143};
+
+constexpr std::array kServerbound{1, 4, 8, 9, 69, 77, 100, 101, 129, 144, 152, 193};
+constexpr std::array kClientbound{2, 3, 5, 6, 7, 9, 79, 100, 101, 118, 144, 143};
 
 spyglass::script::Side side_of(const void *object, const int id, const bool sender)
 {
