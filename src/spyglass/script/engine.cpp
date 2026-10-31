@@ -753,6 +753,7 @@ export class WebSocket {
 }
 
 export const net = Object.freeze({ fetch, WebSocket });
+export const env = Object.freeze({ ...native.env });
 
 export const process = Object.freeze({
   platform: native.platform,
@@ -2300,6 +2301,7 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     removeEventListener(type: "open" | "message" | "error" | "close", listener: (event: any) => void): void;
   }
   export const net: { fetch: typeof fetch; WebSocket: typeof WebSocket };
+  export const env: Readonly<Record<string, string>>;
   export const process: {
     platform: string;
     run(file: string, args?: string[], options?: { cwd?: string; timeout?: number }): Promise<{ code: number; output: string }>;
@@ -3329,6 +3331,75 @@ void unload(const std::string_view name)
     rebuild_wanted();
 }
 
+std::vector<std::pair<std::string, std::string>> read_env(const std::filesystem::path &file)
+{
+    std::vector<std::pair<std::string, std::string>> values;
+    std::ifstream in{file, std::ios::binary};
+    if (!in) {
+        return values;
+    }
+    const auto trim = [](std::string text) {
+        const auto blank = [](const char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
+        while (!text.empty() && blank(text.back())) {
+            text.pop_back();
+        }
+        std::size_t start = 0;
+        while (start < text.size() && blank(text[start])) {
+            ++start;
+        }
+        return text.substr(start);
+    };
+    std::string line;
+    bool first = true;
+    while (std::getline(in, line)) {
+        if (first && line.starts_with("\xEF\xBB\xBF")) {
+            line.erase(0, 3);
+        }
+        first = false;
+        line = trim(line);
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        if (line.starts_with("export ")) {
+            line = trim(line.substr(7));
+        }
+        const auto equals = line.find('=');
+        if (equals == std::string::npos) {
+            continue;
+        }
+        const auto key = trim(line.substr(0, equals));
+        const auto word = [](const char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+        };
+        if (key.empty() || (key[0] >= '0' && key[0] <= '9') || !std::ranges::all_of(key, word)) {
+            continue;
+        }
+        auto value = trim(line.substr(equals + 1));
+        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+            std::string text;
+            for (std::size_t i = 1; i + 1 < value.size(); ++i) {
+                if (value[i] == '\\' && i + 2 < value.size()) {
+                    const auto next = value[++i];
+                    text += next == 'n' ? '\n' : next == 't' ? '\t' : next;
+                }
+                else {
+                    text += value[i];
+                }
+            }
+            value = text;
+        }
+        else if (value.size() >= 2 && value.front() == '\'' && value.back() == '\'') {
+            value = value.substr(1, value.size() - 2);
+        }
+        else if (const auto comment = value.find(" #"); comment != std::string::npos) {
+            value = trim(value.substr(0, comment));
+        }
+        std::erase_if(values, [&](const auto &entry) { return entry.first == key; });
+        values.emplace_back(key, value);
+    }
+    return values;
+}
+
 std::string load(const std::string &name)
 {
     const auto entry = find_entry(name);
@@ -3375,6 +3446,13 @@ std::string load(const std::string &name)
                       JS_NewString(module.ctx, "android")
 #endif
     );
+    const auto env = JS_NewObject(module.ctx);
+    if (module.entry.filename() == "index.js" && module.root.filename() == path_of(name)) {
+        for (const auto &[key, value] : read_env(module.root / ".env")) {
+            JS_SetPropertyStr(module.ctx, env, key.c_str(), JS_NewString(module.ctx, value.c_str()));
+        }
+    }
+    JS_SetPropertyStr(module.ctx, native, "env", env);
     JS_SetPropertyStr(module.ctx, global, "__spyglass", native);
     JS_SetPropertyStr(module.ctx, global, "setTimeout",
                       JS_NewCFunctionMagic(module.ctx, js_timer, "setTimeout", 2, JS_CFUNC_generic_magic, 0));

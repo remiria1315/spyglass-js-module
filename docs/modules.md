@@ -8,6 +8,31 @@ A module is a JavaScript file that runs inside the client and reacts to packets.
 Modules live in `%LOCALAPPDATA%\spyglass\modules` on Windows and `~/.local/share/spyglass/modules` on the Linux
 launcher. A module is either `<name>.js` or `<name>/index.js`. A name uses letters, digits, `_`, `-` and `.`.
 
+A module in a folder can be split into several files. The folder name is the module name, `index.js` is the entry, and
+the other files are imported with relative paths. A `.env` file in that folder is read when the module loads and its
+values are exported as `env`:
+
+```
+modules/
+  test/
+    index.js
+    util.js
+    .env
+  test2.js
+```
+
+```javascript
+import { env } from "spyglass";
+import { greet } from "./util.js";
+
+console.log(greet(env.NAME), env.TOKEN);
+```
+
+`.env` has one `KEY=value` per line. Empty lines and lines starting with `#` are skipped, `export ` before a key is
+allowed, a value can be in double quotes (with `\n`, `\t`, `\"` and `\\`) or single quotes, and an unquoted value ends at
+` #`. If a key appears twice the last one wins. `env` is empty for a single-file module and for a missing file, and its
+values are strings.
+
 Which modules are enabled is kept in `modules.json` in the same folder, and those are loaded when the client starts.
 
 ## Chat commands

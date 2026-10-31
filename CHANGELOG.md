@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A module in a folder reads a `.env` file next to its `index.js`. The values are available as `env`, imported from
+  `"spyglass"`.
+
 ## [0.5.6] - 2026-10-29 
 
 ### Added
