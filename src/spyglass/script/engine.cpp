@@ -34,6 +34,8 @@ namespace {
 
 constexpr int kIdLimit = 1024;
 constexpr std::size_t kLogLimit = 500;
+constexpr std::size_t kBusQueueLimit = 1000;
+constexpr std::size_t kBusPayloadLimit = 1U << 20U;
 constexpr std::size_t kTimerLimit = 256;
 constexpr std::size_t kPendingLimit = 16;
 constexpr std::uintmax_t kFileLimit = 16U * 1024U * 1024U;
@@ -754,6 +756,20 @@ export class WebSocket {
 
 export const net = Object.freeze({ fetch, WebSocket });
 export const env = Object.freeze({ ...native.env });
+export const bus = Object.freeze({
+  on(topic, listener) {
+    if (typeof topic !== "string" || topic === "") throw new TypeError("topic is a non-empty string");
+    if (typeof listener !== "function") throw new TypeError("on expects a function");
+    const token = native.busOn(topic, listener);
+    return () => native.busOff(token);
+  },
+  emit(topic, data) {
+    if (typeof topic !== "string" || topic === "") throw new TypeError("topic is a non-empty string");
+    const json = JSON.stringify(data === undefined ? null : data);
+    if (json === undefined) throw new TypeError("the data cannot be sent as JSON");
+    native.busEmit(topic, json);
+  },
+});
 
 export const process = Object.freeze({
   platform: native.platform,
@@ -2302,6 +2318,10 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
   }
   export const net: { fetch: typeof fetch; WebSocket: typeof WebSocket };
   export const env: Readonly<Record<string, string>>;
+  export const bus: {
+    on(topic: string, listener: (data: any, from: string) => void): () => void;
+    emit(topic: string, data?: any): void;
+  };
   export const process: {
     platform: string;
     run(file: string, args?: string[], options?: { cwd?: string; timeout?: number }): Promise<{ code: number; output: string }>;
@@ -2529,6 +2549,19 @@ struct Completion {
     std::string body;
 };
 
+struct BusListener {
+    int token{0};
+    std::string topic;
+    JSValue callback{JS_UNDEFINED};
+};
+
+struct BusMessage {
+    std::uint64_t from{0};
+    std::string from_name;
+    std::string topic;
+    std::string json;
+};
+
 struct Module {
     std::uint64_t uid{0};
     Side side{Side::Client};
@@ -2541,6 +2574,7 @@ struct Module {
     std::vector<Timer> timers;
     std::map<int, Pending> pending;
     std::vector<int> sockets;
+    std::vector<BusListener> bus;
 };
 
 struct Active {
@@ -2556,6 +2590,7 @@ std::set<std::string, std::less<>> g_enabled;
 std::map<std::string, std::set<std::string, std::less<>>, std::less<>> g_grants;
 std::map<std::string, std::string, std::less<>> g_failures;
 std::vector<std::string> g_packet_names;
+std::deque<BusMessage> g_bus;
 std::array<std::atomic<std::uint8_t>, kIdLimit> g_wanted{};
 std::chrono::steady_clock::time_point g_deadline;
 Active *g_active = nullptr;
@@ -3164,6 +3199,67 @@ JSValue js_ws_send(JSContext *ctx, JSValueConst, const int argc, JSValueConst *a
     return JS_UNDEFINED;
 }
 
+JSValue js_bus_on(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    if (module == nullptr || argc < 2 || !JS_IsFunction(ctx, argv[1])) {
+        return JS_ThrowTypeError(ctx, "on expects a topic and a function");
+    }
+    const auto *const topic = JS_ToCString(ctx, argv[0]);
+    if (topic == nullptr) {
+        return JS_EXCEPTION;
+    }
+    const auto token = g_next_token++;
+    module->bus.push_back({token, topic, JS_DupValue(ctx, argv[1])});
+    JS_FreeCString(ctx, topic);
+    return JS_NewInt32(ctx, token);
+}
+
+JSValue js_bus_off(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    std::int32_t token = 0;
+    if (module == nullptr || argc < 1 || JS_ToInt32(ctx, &token, argv[0]) != 0) {
+        return JS_UNDEFINED;
+    }
+    const auto found = std::ranges::find(module->bus, token, &BusListener::token);
+    if (found != module->bus.end()) {
+        JS_FreeValue(ctx, found->callback);
+        module->bus.erase(found);
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue js_bus_emit(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    if (module == nullptr || argc < 2) {
+        return JS_ThrowTypeError(ctx, "emit expects a topic and a JSON string");
+    }
+    const auto *const topic = JS_ToCString(ctx, argv[0]);
+    if (topic == nullptr) {
+        return JS_EXCEPTION;
+    }
+    const auto *const json = JS_ToCString(ctx, argv[1]);
+    if (json == nullptr) {
+        JS_FreeCString(ctx, topic);
+        return JS_EXCEPTION;
+    }
+    JSValue result = JS_UNDEFINED;
+    if (std::string_view{json}.size() > kBusPayloadLimit) {
+        result = JS_ThrowRangeError(ctx, "the message is larger than %zu bytes", kBusPayloadLimit);
+    }
+    else if (g_bus.size() >= kBusQueueLimit) {
+        result = JS_ThrowInternalError(ctx, "too many messages are waiting, the message was dropped");
+    }
+    else {
+        g_bus.push_back({module->uid, module->name, topic, json});
+    }
+    JS_FreeCString(ctx, json);
+    JS_FreeCString(ctx, topic);
+    return result;
+}
+
 JSValue js_ws_close(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
     auto *const module = module_of(ctx);
@@ -3310,6 +3406,10 @@ void unload(const std::string_view name)
         JS_FreeValue(module.ctx, subscription.callback);
     }
     module.subscriptions.clear();
+    for (auto &listener : module.bus) {
+        JS_FreeValue(module.ctx, listener.callback);
+    }
+    module.bus.clear();
     for (auto &timer : module.timers) {
         free_timer(module.ctx, timer);
     }
@@ -3439,6 +3539,9 @@ std::string load(const std::string &name)
     JS_SetPropertyStr(module.ctx, native, "wsReceive", JS_NewCFunction(module.ctx, js_ws_receive, "wsReceive", 1));
     JS_SetPropertyStr(module.ctx, native, "wsSend", JS_NewCFunction(module.ctx, js_ws_send, "wsSend", 3));
     JS_SetPropertyStr(module.ctx, native, "wsClose", JS_NewCFunction(module.ctx, js_ws_close, "wsClose", 3));
+    JS_SetPropertyStr(module.ctx, native, "busOn", JS_NewCFunction(module.ctx, js_bus_on, "busOn", 2));
+    JS_SetPropertyStr(module.ctx, native, "busOff", JS_NewCFunction(module.ctx, js_bus_off, "busOff", 1));
+    JS_SetPropertyStr(module.ctx, native, "busEmit", JS_NewCFunction(module.ctx, js_bus_emit, "busEmit", 2));
     JS_SetPropertyStr(module.ctx, native, "platform",
 #ifdef _WIN32
                       JS_NewString(module.ctx, "windows")
@@ -3724,10 +3827,51 @@ void tick()
     }
     const auto now = std::chrono::steady_clock::now();
     const auto has_timers = std::ranges::any_of(g_loaded, [](const auto &module) { return !module->timers.empty(); });
-    if (done.empty() && !has_timers) {
+    if (done.empty() && !has_timers && g_bus.empty()) {
         return;
     }
     JS_UpdateStackTop(g_runtime);
+
+    std::deque<BusMessage> messages;
+    messages.swap(g_bus);
+    for (const auto &message : messages) {
+        for (const auto &owner : g_loaded) {
+            auto &module = *owner;
+            if (module.uid == message.from) {
+                continue;
+            }
+            std::vector<int> tokens;
+            for (const auto &listener : module.bus) {
+                if (listener.topic == message.topic) {
+                    tokens.push_back(listener.token);
+                }
+            }
+            for (const auto token : tokens) {
+                const auto found = std::ranges::find(module.bus, token, &BusListener::token);
+                if (found == module.bus.end()) {
+                    continue;
+                }
+                auto *const ctx = module.ctx;
+                const auto callback = JS_DupValue(ctx, found->callback);
+                std::array<JSValue, 2> arguments{
+                    JS_ParseJSON(ctx, message.json.data(), message.json.size(), "<bus>"),
+                    JS_NewStringLen(ctx, message.from_name.data(), message.from_name.size())};
+                if (JS_IsException(arguments[0])) {
+                    JS_FreeValue(ctx, JS_GetException(ctx));
+                    arguments[0] = JS_NULL;
+                }
+                g_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{100};
+                const auto outcome = JS_Call(ctx, callback, JS_UNDEFINED, 2, arguments.data());
+                if (JS_IsException(outcome)) {
+                    add_log(module.name, exception_text(ctx), true);
+                }
+                JS_FreeValue(ctx, outcome);
+                JS_FreeValue(ctx, callback);
+                JS_FreeValue(ctx, arguments[0]);
+                JS_FreeValue(ctx, arguments[1]);
+            }
+        }
+    }
 
     for (auto &completion : done) {
         const auto owner =

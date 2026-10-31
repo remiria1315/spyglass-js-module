@@ -95,6 +95,31 @@ A module can import `"spyglass"` and its own files by relative path, `import { x
 leaves the module's folder, or a bare name other than `"spyglass"`, fails the load. There is no file or network
 access.
 
+## Messages between modules
+
+`bus` sends a message from one module to the others. A message has a topic, a string, and data that JSON can carry.
+
+```javascript
+import { bus } from "spyglass";
+
+const off = bus.on("score", (data, from) => {
+  console.log(`${from} sent ${data.points}`);
+});
+
+bus.emit("score", { points: 3 });
+off();
+```
+
+- `bus.on(topic, listener)` returns a function that removes the listener. The listener gets the data and the name of
+  the module that sent it. Listeners are removed when the module is disabled or reloaded.
+- `bus.emit(topic, data)` queues the message and returns. The listeners of the other modules run a moment later, in
+  the order the messages were sent, and a module does not receive its own messages.
+- Data goes through `JSON.stringify` and `JSON.parse`, so each module gets its own copy. Functions, `bigint` and
+  circular objects cannot be sent. A message is at most 1 MiB, and at most 1000 can wait at once.
+- A client module and a `.server.js` module can use the same topics.
+- A listener that throws is logged in the modules window and does not stop the others. A listener has the same 100 ms
+  limit as the other callbacks.
+
 ## Server-side modules
 
 A module whose file name ends in `.server.js` (or a folder `name.server`) sees the packets of the server built into the
