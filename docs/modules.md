@@ -255,6 +255,73 @@ that reads them, such as VS Code opened on that folder, completes the `spyglass`
 callback. Timers run from the overlay's frame loop, so they fire at frame granularity and a callback that runs longer
 than 100 ms is interrupted. A module can hold 256 timers.
 
+## Drawing
+
+`render.on(callback)` runs the callback once per frame, and the callback draws on a layer above the game. It works
+whether or not the overlay window is open. The callback gets a `draw` object, and `render.on` returns a function that
+removes the callback.
+
+```js
+import { render } from "spyglass";
+
+const off = render.on((draw) => {
+  draw.rect(20, 20, 160, 28, { fill: true, color: "#000000b0", rounding: 4 });
+  draw.text(28, 26, "hello", { color: "#ffffff", size: 16 });
+});
+```
+
+Coordinates are in pixels of the game window, with `(0, 0)` at the top left. Colors are `"#rrggbb"`, `"#rrggbbaa"` or a
+number `0xrrggbbaa`, and default to white.
+
+| call | |
+| --- | --- |
+| `draw.width`, `draw.height` | size of the window in pixels |
+| `draw.line(x1, y1, x2, y2, { color, thickness })` | a line. `thickness` defaults to 1. |
+| `draw.rect(x, y, width, height, { color, thickness, rounding, fill })` | a rectangle from its top left corner. `fill: true` fills it. |
+| `draw.circle(x, y, radius, { color, thickness, fill, segments })` | a circle around its centre. `segments` defaults to automatic. |
+| `draw.polyline(points, { color, thickness, closed })` | lines through an array of `{ x, y }`. `closed: true` joins the last point to the first. At most 4096 points. |
+| `draw.text(x, y, text, { color, size })` | text from its top left corner. `size` is in pixels and defaults to the overlay font size. At most 4096 bytes are drawn. |
+| `draw.textSize(text, size?)` | `{ width, height }` of the text, for centring or backgrounds |
+| `draw.worldToScreen(point, camera)` | `{ x, y, depth }` in pixels, or `null` if the point is behind the camera |
+
+A coordinate that is `NaN` or infinite skips that call. A value that is not a number, or a color in another format,
+throws.
+
+### `draw.worldToScreen(point, camera)`
+
+`point` is `{ x, y, z }` in world coordinates. `camera` is `{ x, y, z, yaw, pitch, fov }`.
+
+- `x`, `y` and `z` are the position of the eye.
+- `yaw` and `pitch` are in degrees. Yaw 0 faces +Z and yaw 90 faces -X. A positive pitch looks down.
+- `fov` is the vertical field of view in degrees, 70 if left out. The projection matches the game only when `fov`
+  matches what the client renders, and the client changes it while sprinting and with some effects.
+
+`depth` is the distance of the point along the direction the camera faces. Spyglass does not read the camera from the
+client, so a module has to supply it, for example from the position and rotation in `playerAuthInputPacket`.
+
+```js
+import { packet, Packets, BinaryReader, render } from "spyglass";
+
+const camera = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, fov: 70 };
+
+packet.subscribe(Packets.playerAuthInputPacket, (pkt, ctx) => {
+  const reader = new BinaryReader(ctx.body);
+  camera.pitch = reader.float32();
+  camera.yaw = reader.float32();
+  camera.x = reader.float32();
+  camera.y = reader.float32();
+  camera.z = reader.float32();
+}, { direction: "c2s" });
+
+render.on((draw) => {
+  const spot = draw.worldToScreen({ x: 0, y: 70, z: 0 }, camera);
+  if (spot) draw.circle(spot.x, spot.y, 6, { color: "#ff4040", fill: true });
+});
+```
+
+A callback that throws or runs longer than 20 ms is logged in the modules window and removed. A module can hold 16
+render callbacks and draw 20000 shapes per frame. `draw` works only while the callback runs.
+
 ## Permissions
 
 `fs`, `net` and `process` are off until granted per module. A call without the permission throws an error that names
@@ -316,14 +383,14 @@ so grant it only to modules you trust.
 
 ## Limits
 
-- A callback that runs longer than 100 ms is interrupted, and a module takes 2 s at most to load.
+- A callback that runs longer than 100 ms is interrupted, and a module takes 2 s at most to load. A render callback gets 20 ms.
 - All modules share 128 MB.
 - An error in a callback is written to the modules window, and the packet carries on.
 - Cancelling a packet the client sends needs the send hook, which is cut against the Windows 1.26.50 and 1.26.60 release clients. On a client without it, the errors window says so, `cancel()` does nothing, and a `!!module` message is sent to the server.
 
 ## Examples
 
-`examples/modules` has small modules to copy into the modules folder: `log-chat`, `block-word`, `shout`, `count-packets`, `api-demo`, `say`, `fake-chat`, `hello-command`, `run-command` and `greet.server`.
+`examples/modules` has small modules to copy into the modules folder: `log-chat`, `block-word`, `shout`, `count-packets`, `api-demo`, `say`, `fake-chat`, `hello-command`, `run-command`, `render-demo` and `greet.server`.
 
 Log every chat message the client sends, and drop the ones that contain a word:
 

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `render`, imported from `"spyglass"`, draws on the screen. `render.on(callback)` runs the callback every frame with a
+  `draw` object that has `line`, `rect`, `circle`, `polyline`, `text`, `textSize` and `worldToScreen`. It draws whether
+  or not the overlay window is open.
 - `bus`, imported from `"spyglass"`, sends messages between modules. `bus.on(topic, listener)` listens and
   `bus.emit(topic, data)` sends JSON data to the listeners of the other modules.
 - A module in a folder reads a `.env` file next to its `index.js`. The values are available as `env`, imported from

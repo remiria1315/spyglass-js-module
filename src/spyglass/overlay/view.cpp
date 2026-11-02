@@ -68,6 +68,7 @@ void View::draw()
     advance_export(export_dialog_.job, capture_);
 
     script::tick();
+    script::render();
     if (script::take_attention()) {
         options_.modules_window = true;
         modules_window_.touched = ImGui::GetTime();

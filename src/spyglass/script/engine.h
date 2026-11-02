@@ -59,6 +59,8 @@ Verdict dispatch(const Event &event, const std::function<nlohmann::ordered_json(
 
 void tick();
 
+void render();
+
 bool handle_chat(std::string_view message);
 
 void execute(std::string_view arguments);

@@ -9,6 +9,7 @@
 #include <format>
 #include <fstream>
 #include <exception>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -19,6 +20,7 @@
 #include <thread>
 #include <utility>
 
+#include <imgui.h>
 #include <quickjs.h>
 
 #ifdef _WIN32
@@ -38,6 +40,10 @@ constexpr std::size_t kBusQueueLimit = 1000;
 constexpr std::size_t kBusPayloadLimit = 1U << 20U;
 constexpr std::size_t kTimerLimit = 256;
 constexpr std::size_t kPendingLimit = 16;
+constexpr std::size_t kRenderLimit = 16;
+constexpr std::size_t kDrawLimit = 20000;
+constexpr std::size_t kPolylineLimit = 4096;
+constexpr std::size_t kTextLimit = 4096;
 constexpr std::uintmax_t kFileLimit = 16U * 1024U * 1024U;
 constexpr std::array<std::string_view, 4> kPermissions{"fs", "fs.all", "net", "process"};
 
@@ -768,6 +774,102 @@ export const bus = Object.freeze({
     const json = JSON.stringify(data === undefined ? null : data);
     if (json === undefined) throw new TypeError("the data cannot be sent as JSON");
     native.busEmit(topic, json);
+  },
+});
+
+const colorOf = (value) => {
+  if (value === undefined) return 0xffffffff;
+  if (typeof value === "number") return value >>> 0;
+  const match = typeof value === "string" ? /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(value) : null;
+  if (match === null) throw new TypeError("a color is #rrggbb, #rrggbbaa or a number 0xrrggbbaa");
+  return ((parseInt(match[1], 16) << 8) | parseInt(match[2] ?? "ff", 16)) >>> 0;
+};
+
+const numbers = (...values) => {
+  let finite = true;
+  for (const value of values) {
+    if (typeof value !== "number") throw new TypeError("expected a number");
+    if (!Number.isFinite(value)) finite = false;
+  }
+  return finite;
+};
+
+const frame = { width: 0, height: 0 };
+
+const draw = Object.freeze({
+  get width() { return frame.width; },
+  get height() { return frame.height; },
+  line(x1, y1, x2, y2, options = {}) {
+    const thickness = options.thickness ?? 1;
+    if (numbers(x1, y1, x2, y2, thickness)) native.drawLine(x1, y1, x2, y2, colorOf(options.color), thickness);
+  },
+  rect(x, y, width, height, options = {}) {
+    const thickness = options.thickness ?? 1;
+    const rounding = options.rounding ?? 0;
+    if (numbers(x, y, width, height, thickness, rounding)) {
+      native.drawRect(x, y, width, height, colorOf(options.color), thickness, rounding, options.fill === true);
+    }
+  },
+  circle(x, y, radius, options = {}) {
+    const thickness = options.thickness ?? 1;
+    const segments = options.segments ?? 0;
+    if (numbers(x, y, radius, thickness, segments)) {
+      native.drawCircle(x, y, radius, colorOf(options.color), thickness, options.fill === true, segments);
+    }
+  },
+  polyline(points, options = {}) {
+    if (!Array.isArray(points)) throw new TypeError("points is an array of { x, y }");
+    const thickness = options.thickness ?? 1;
+    const flat = points.flatMap((point) => [point.x, point.y]);
+    if (points.length >= 2 && numbers(thickness, ...flat)) {
+      native.drawPolyline(flat, colorOf(options.color), thickness, options.closed === true);
+    }
+  },
+  text(x, y, text, options = {}) {
+    const size = options.size ?? 0;
+    if (numbers(x, y, size)) native.drawText(x, y, size, colorOf(options.color), String(text));
+  },
+  textSize(text, size = 0) {
+    const [width, height] = native.textSize(numbers(size) ? size : 0, String(text));
+    return { width, height };
+  },
+  worldToScreen(point, camera) {
+    const fov = camera.fov ?? 70;
+    const finite = numbers(point.x, point.y, point.z, camera.x, camera.y, camera.z, camera.yaw, camera.pitch, fov);
+    if (!finite || frame.height <= 0) return null;
+    const yaw = (camera.yaw * Math.PI) / 180;
+    const pitch = (camera.pitch * Math.PI) / 180;
+    const forward = { x: -Math.sin(yaw) * Math.cos(pitch), y: -Math.sin(pitch), z: Math.cos(yaw) * Math.cos(pitch) };
+    const right = { x: -Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
+    const up = {
+      x: right.y * forward.z - right.z * forward.y,
+      y: right.z * forward.x - right.x * forward.z,
+      z: right.x * forward.y - right.y * forward.x,
+    };
+    const dx = point.x - camera.x;
+    const dy = point.y - camera.y;
+    const dz = point.z - camera.z;
+    const depth = dx * forward.x + dy * forward.y + dz * forward.z;
+    if (!(depth > 0.05)) return null;
+    const scale = 1 / (Math.tan((fov * Math.PI) / 360) * depth);
+    const aspect = frame.width / frame.height;
+    return {
+      x: (1 + ((dx * right.x + dy * right.y + dz * right.z) * scale) / aspect) * 0.5 * frame.width,
+      y: (1 - (dx * up.x + dy * up.y + dz * up.z) * scale) * 0.5 * frame.height,
+      depth,
+    };
+  },
+});
+
+export const render = Object.freeze({
+  on(callback) {
+    if (typeof callback !== "function") throw new TypeError("on expects a function");
+    const token = native.renderOn((width, height) => {
+      frame.width = width;
+      frame.height = height;
+      callback(draw);
+    });
+    return () => native.renderOff(token);
   },
 });
 
@@ -2322,6 +2424,23 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     on(topic: string, listener: (data: any, from: string) => void): () => void;
     emit(topic: string, data?: any): void;
   };
+  export type Color = string | number;
+  export interface Camera { x: number; y: number; z: number; yaw: number; pitch: number; fov?: number }
+  export interface ScreenPoint { x: number; y: number; depth: number }
+  export interface Draw {
+    readonly width: number;
+    readonly height: number;
+    line(x1: number, y1: number, x2: number, y2: number, options?: { color?: Color; thickness?: number }): void;
+    rect(x: number, y: number, width: number, height: number, options?: { color?: Color; thickness?: number; rounding?: number; fill?: boolean }): void;
+    circle(x: number, y: number, radius: number, options?: { color?: Color; thickness?: number; fill?: boolean; segments?: number }): void;
+    polyline(points: { x: number; y: number }[], options?: { color?: Color; thickness?: number; closed?: boolean }): void;
+    text(x: number, y: number, text: string, options?: { color?: Color; size?: number }): void;
+    textSize(text: string, size?: number): { width: number; height: number };
+    worldToScreen(point: Vec3, camera: Camera): ScreenPoint | null;
+  }
+  export const render: {
+    on(callback: (draw: Draw) => void): () => void;
+  };
   export const process: {
     platform: string;
     run(file: string, args?: string[], options?: { cwd?: string; timeout?: number }): Promise<{ code: number; output: string }>;
@@ -2555,6 +2674,11 @@ struct BusListener {
     JSValue callback{JS_UNDEFINED};
 };
 
+struct Renderer {
+    int token{0};
+    JSValue callback{JS_UNDEFINED};
+};
+
 struct BusMessage {
     std::uint64_t from{0};
     std::string from_name;
@@ -2575,6 +2699,7 @@ struct Module {
     std::map<int, Pending> pending;
     std::vector<int> sockets;
     std::vector<BusListener> bus;
+    std::vector<Renderer> renderers;
 };
 
 struct Active {
@@ -2594,6 +2719,8 @@ std::deque<BusMessage> g_bus;
 std::array<std::atomic<std::uint8_t>, kIdLimit> g_wanted{};
 std::chrono::steady_clock::time_point g_deadline;
 Active *g_active = nullptr;
+ImDrawList *g_draw_list = nullptr;
+std::size_t g_draw_count = 0;
 Sender g_sender = nullptr;
 std::int64_t g_serial = 0;
 int g_next_token = 1;
@@ -3260,6 +3387,159 @@ JSValue js_bus_emit(JSContext *ctx, JSValueConst, const int argc, JSValueConst *
     return result;
 }
 
+JSValue js_render_on(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    if (module == nullptr || argc < 1 || !JS_IsFunction(ctx, argv[0])) {
+        return JS_ThrowTypeError(ctx, "on expects a function");
+    }
+    if (module->renderers.size() >= kRenderLimit) {
+        return JS_ThrowRangeError(ctx, "too many render callbacks");
+    }
+    const auto token = g_next_token++;
+    module->renderers.push_back({token, JS_DupValue(ctx, argv[0])});
+    return JS_NewInt32(ctx, token);
+}
+
+JSValue js_render_off(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    auto *const module = module_of(ctx);
+    std::int32_t token = 0;
+    if (module == nullptr || argc < 1 || JS_ToInt32(ctx, &token, argv[0]) != 0) {
+        return JS_UNDEFINED;
+    }
+    const auto found = std::ranges::find(module->renderers, token, &Renderer::token);
+    if (found != module->renderers.end()) {
+        JS_FreeValue(ctx, found->callback);
+        module->renderers.erase(found);
+    }
+    return JS_UNDEFINED;
+}
+
+enum DrawOp : int { kDrawLine, kDrawRect, kDrawCircle, kDrawText, kDrawPolyline };
+
+constexpr std::array<int, 5> kDrawArity{6, 8, 7, 5, 4};
+
+float float_at(JSContext *ctx, JSValueConst *argv, const int index)
+{
+    double value = 0;
+    JS_ToFloat64(ctx, &value, argv[index]);
+    return static_cast<float>(value);
+}
+
+ImU32 color_at(JSContext *ctx, JSValueConst *argv, const int index)
+{
+    std::uint32_t rgba = 0;
+    JS_ToUint32(ctx, &rgba, argv[index]);
+    return IM_COL32((rgba >> 24U) & 0xFFU, (rgba >> 16U) & 0xFFU, (rgba >> 8U) & 0xFFU, rgba & 0xFFU);
+}
+
+JSValue js_draw(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv, const int op)
+{
+    if (g_draw_list == nullptr) {
+        return JS_ThrowInternalError(ctx, "draw calls work only inside a render callback");
+    }
+    if (argc < kDrawArity[static_cast<std::size_t>(op)]) {
+        return JS_ThrowTypeError(ctx, "missing arguments");
+    }
+    if (++g_draw_count > kDrawLimit) {
+        return JS_ThrowRangeError(ctx, "more than %zu draw calls in one frame", kDrawLimit);
+    }
+    switch (op) {
+    case kDrawLine:
+        g_draw_list->AddLine(ImVec2{float_at(ctx, argv, 0), float_at(ctx, argv, 1)},
+                             ImVec2{float_at(ctx, argv, 2), float_at(ctx, argv, 3)}, color_at(ctx, argv, 4),
+                             float_at(ctx, argv, 5));
+        break;
+    case kDrawRect: {
+        const ImVec2 from{float_at(ctx, argv, 0), float_at(ctx, argv, 1)};
+        const ImVec2 to{from.x + float_at(ctx, argv, 2), from.y + float_at(ctx, argv, 3)};
+        if (JS_ToBool(ctx, argv[7]) > 0) {
+            g_draw_list->AddRectFilled(from, to, color_at(ctx, argv, 4), float_at(ctx, argv, 6));
+        }
+        else {
+            g_draw_list->AddRect(from, to, color_at(ctx, argv, 4), float_at(ctx, argv, 6), ImDrawFlags_None,
+                                 float_at(ctx, argv, 5));
+        }
+        break;
+    }
+    case kDrawCircle: {
+        const ImVec2 center{float_at(ctx, argv, 0), float_at(ctx, argv, 1)};
+        const auto segments = static_cast<int>(float_at(ctx, argv, 6));
+        if (JS_ToBool(ctx, argv[5]) > 0) {
+            g_draw_list->AddCircleFilled(center, float_at(ctx, argv, 2), color_at(ctx, argv, 3), segments);
+        }
+        else {
+            g_draw_list->AddCircle(center, float_at(ctx, argv, 2), color_at(ctx, argv, 3), segments,
+                                   float_at(ctx, argv, 4));
+        }
+        break;
+    }
+    case kDrawText: {
+        std::size_t length = 0;
+        const auto *const text = JS_ToCStringLen(ctx, &length, argv[4]);
+        if (text == nullptr) {
+            return JS_EXCEPTION;
+        }
+        g_draw_list->AddText(nullptr, float_at(ctx, argv, 2), ImVec2{float_at(ctx, argv, 0), float_at(ctx, argv, 1)},
+                             color_at(ctx, argv, 3), text, text + std::min(length, kTextLimit));
+        JS_FreeCString(ctx, text);
+        break;
+    }
+    case kDrawPolyline: {
+        if (!JS_IsArray(argv[0])) {
+            return JS_ThrowTypeError(ctx, "expected an array of numbers");
+        }
+        std::uint32_t length = 0;
+        const auto size = JS_GetPropertyStr(ctx, argv[0], "length");
+        JS_ToUint32(ctx, &length, size);
+        JS_FreeValue(ctx, size);
+        if (length < 4 || length % 2 != 0 || length > kPolylineLimit * 2) {
+            return JS_ThrowRangeError(ctx, "a polyline takes 2 to %zu points as x, y pairs", kPolylineLimit);
+        }
+        std::vector<ImVec2> points(length / 2);
+        for (std::uint32_t i = 0; i < length; ++i) {
+            const auto element = JS_GetPropertyUint32(ctx, argv[0], i);
+            double value = 0;
+            JS_ToFloat64(ctx, &value, element);
+            JS_FreeValue(ctx, element);
+            (i % 2 == 0 ? points[i / 2].x : points[i / 2].y) = static_cast<float>(value);
+        }
+        g_draw_list->AddPolyline(points.data(), static_cast<int>(points.size()), color_at(ctx, argv, 1),
+                                 JS_ToBool(ctx, argv[3]) > 0 ? ImDrawFlags_Closed : ImDrawFlags_None,
+                                 float_at(ctx, argv, 2));
+        break;
+    }
+    default:
+        break;
+    }
+    return JS_UNDEFINED;
+}
+
+JSValue js_text_size(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    if (g_draw_list == nullptr) {
+        return JS_ThrowInternalError(ctx, "textSize works only inside a render callback");
+    }
+    if (argc < 2) {
+        return JS_ThrowTypeError(ctx, "missing arguments");
+    }
+    std::size_t length = 0;
+    const auto *const text = JS_ToCStringLen(ctx, &length, argv[1]);
+    if (text == nullptr) {
+        return JS_EXCEPTION;
+    }
+    const auto requested = float_at(ctx, argv, 0);
+    const auto extent = ImGui::GetFont()->CalcTextSizeA(requested > 0.0F ? requested : ImGui::GetFontSize(),
+                                                        std::numeric_limits<float>::max(), 0.0F, text,
+                                                        text + std::min(length, kTextLimit));
+    JS_FreeCString(ctx, text);
+    const auto result = JS_NewArray(ctx);
+    JS_SetPropertyUint32(ctx, result, 0, JS_NewFloat64(ctx, extent.x));
+    JS_SetPropertyUint32(ctx, result, 1, JS_NewFloat64(ctx, extent.y));
+    return result;
+}
+
 JSValue js_ws_close(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
     auto *const module = module_of(ctx);
@@ -3410,6 +3690,10 @@ void unload(const std::string_view name)
         JS_FreeValue(module.ctx, listener.callback);
     }
     module.bus.clear();
+    for (auto &renderer : module.renderers) {
+        JS_FreeValue(module.ctx, renderer.callback);
+    }
+    module.renderers.clear();
     for (auto &timer : module.timers) {
         free_timer(module.ctx, timer);
     }
@@ -3542,6 +3826,18 @@ std::string load(const std::string &name)
     JS_SetPropertyStr(module.ctx, native, "busOn", JS_NewCFunction(module.ctx, js_bus_on, "busOn", 2));
     JS_SetPropertyStr(module.ctx, native, "busOff", JS_NewCFunction(module.ctx, js_bus_off, "busOff", 1));
     JS_SetPropertyStr(module.ctx, native, "busEmit", JS_NewCFunction(module.ctx, js_bus_emit, "busEmit", 2));
+    JS_SetPropertyStr(module.ctx, native, "renderOn", JS_NewCFunction(module.ctx, js_render_on, "renderOn", 1));
+    JS_SetPropertyStr(module.ctx, native, "renderOff", JS_NewCFunction(module.ctx, js_render_off, "renderOff", 1));
+    JS_SetPropertyStr(module.ctx, native, "textSize", JS_NewCFunction(module.ctx, js_text_size, "textSize", 2));
+    for (const auto &[name, op] : std::array<std::pair<const char *, DrawOp>, 5>{{{"drawLine", kDrawLine},
+                                                                                  {"drawRect", kDrawRect},
+                                                                                  {"drawCircle", kDrawCircle},
+                                                                                  {"drawText", kDrawText},
+                                                                                  {"drawPolyline", kDrawPolyline}}}) {
+        JS_SetPropertyStr(module.ctx, native, name,
+                          JS_NewCFunctionMagic(module.ctx, js_draw, name, kDrawArity[static_cast<std::size_t>(op)],
+                                               JS_CFUNC_generic_magic, op));
+    }
     JS_SetPropertyStr(module.ctx, native, "platform",
 #ifdef _WIN32
                       JS_NewString(module.ctx, "windows")
@@ -3981,6 +4277,49 @@ void tick()
             add_log("", exception_text(job_ctx), true);
         }
     }
+}
+
+void render()
+{
+    std::unique_lock lock{g_mutex, std::try_to_lock};
+    if (!lock.owns_lock() || g_runtime == nullptr ||
+        std::ranges::none_of(g_loaded, [](const auto &module) { return !module->renderers.empty(); })) {
+        return;
+    }
+    JS_UpdateStackTop(g_runtime);
+
+    g_draw_list = ImGui::GetForegroundDrawList();
+    const auto display = ImGui::GetIO().DisplaySize;
+    for (const auto &owner : g_loaded) {
+        auto &module = *owner;
+        auto *const ctx = module.ctx;
+        std::vector<int> tokens;
+        for (const auto &renderer : module.renderers) {
+            tokens.push_back(renderer.token);
+        }
+        g_draw_count = 0;
+        for (const auto token : tokens) {
+            const auto found = std::ranges::find(module.renderers, token, &Renderer::token);
+            if (found == module.renderers.end()) {
+                continue;
+            }
+            const auto callback = JS_DupValue(ctx, found->callback);
+            std::array<JSValue, 2> arguments{JS_NewFloat64(ctx, display.x), JS_NewFloat64(ctx, display.y)};
+            g_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{20};
+            const auto outcome = JS_Call(ctx, callback, JS_UNDEFINED, 2, arguments.data());
+            if (JS_IsException(outcome)) {
+                add_log(module.name, exception_text(ctx), true);
+                const auto failed = std::ranges::find(module.renderers, token, &Renderer::token);
+                if (failed != module.renderers.end()) {
+                    JS_FreeValue(ctx, failed->callback);
+                    module.renderers.erase(failed);
+                }
+            }
+            JS_FreeValue(ctx, outcome);
+            JS_FreeValue(ctx, callback);
+        }
+    }
+    g_draw_list = nullptr;
 }
 
 bool handle_chat(const std::string_view message)
