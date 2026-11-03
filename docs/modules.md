@@ -282,22 +282,32 @@ number `0xrrggbbaa`, and default to white.
 | `draw.polyline(points, { color, thickness, closed })` | lines through an array of `{ x, y }`. `closed: true` joins the last point to the first. At most 4096 points. |
 | `draw.text(x, y, text, { color, size })` | text from its top left corner. `size` is in pixels and defaults to the overlay font size. At most 4096 bytes are drawn. |
 | `draw.textSize(text, size?)` | `{ width, height }` of the text, for centring or backgrounds |
-| `draw.worldToScreen(point, camera)` | `{ x, y, depth }` in pixels, or `null` if the point is behind the camera |
+| `draw.setCamera(camera)` | sets the camera for the calls below until the end of the callback |
+| `draw.worldToScreen(point, camera?)` | `{ x, y, depth, scale }` in pixels, or `null` if the point is behind the camera |
+| `draw.block(position, { color, thickness, fill, camera })` | outlines the block that contains `position` |
+| `draw.box(min, max, { color, thickness, fill, camera })` | outlines the box between two world positions |
 
 A coordinate that is `NaN` or infinite skips that call. A value that is not a number, or a color in another format,
 throws.
 
-### `draw.worldToScreen(point, camera)`
+### Camera
 
-`point` is `{ x, y, z }` in world coordinates. `camera` is `{ x, y, z, yaw, pitch, fov }`.
+`camera` is `{ x, y, z, yaw, pitch, fov }`.
 
 - `x`, `y` and `z` are the position of the eye.
 - `yaw` and `pitch` are in degrees. Yaw 0 faces +Z and yaw 90 faces -X. A positive pitch looks down.
 - `fov` is the vertical field of view in degrees, 70 if left out. The projection matches the game only when `fov`
   matches what the client renders, and the client changes it while sprinting and with some effects.
 
-`depth` is the distance of the point along the direction the camera faces. Spyglass does not read the camera from the
-client, so a module has to supply it, for example from the position and rotation in `playerAuthInputPacket`.
+Spyglass does not read the camera from the client, so a module has to supply it, for example from the position and
+rotation in `playerAuthInputPacket`. `draw.setCamera(camera)` computes the view once, so it is cheaper than passing the
+camera to every call. The camera set in one callback does not carry over to the next frame.
+
+### Size by distance
+
+`draw.worldToScreen` returns `scale`, the number of pixels one block spans at that point. `depth` is the distance of the
+point along the direction the camera faces. Multiply `scale` by a size in blocks to get a size that shrinks with
+distance:
 
 ```js
 import { packet, Packets, BinaryReader, render } from "spyglass";
@@ -314,13 +324,37 @@ packet.subscribe(Packets.playerAuthInputPacket, (pkt, ctx) => {
 }, { direction: "c2s" });
 
 render.on((draw) => {
-  const spot = draw.worldToScreen({ x: 0, y: 70, z: 0 }, camera);
-  if (spot) draw.circle(spot.x, spot.y, 6, { color: "#ff4040", fill: true });
+  draw.setCamera(camera);
+  const spot = draw.worldToScreen({ x: 0.5, y: 70.5, z: 0.5 });
+  if (spot) {
+    draw.circle(spot.x, spot.y, 0.3 * spot.scale, { color: "#ff4040", fill: true });
+    draw.text(spot.x, spot.y, `${spot.depth.toFixed(1)}m`, { size: Math.max(10, 0.4 * spot.scale) });
+  }
 });
 ```
 
+### Block highlight
+
+`draw.block(position)` outlines the block that contains `position`, so `{ x: 1.5, y: 64.2, z: -3.7 }` highlights the
+block at 1, 64, -4. `draw.box(min, max)` outlines any axis-aligned box. Edges are drawn through other blocks, and an
+edge that crosses the camera plane is cut there.
+
+`fill: true` fills the faces that point at the camera with the color at a quarter of its opacity. `fill` also takes a color
+to fill with. `camera` in the options overrides the camera set with `draw.setCamera`.
+
+```js
+render.on((draw) => {
+  draw.setCamera(camera);
+  draw.block({ x: 10, y: 64, z: 5 }, { color: "#ff5050", fill: true });
+  draw.box({ x: 0, y: 64, z: 0 }, { x: 3, y: 66, z: 2 }, { color: "#50ff50", thickness: 2 });
+});
+```
+
+### Limits
+
 A callback that throws or runs longer than 20 ms is logged in the modules window and removed. A module can hold 16
-render callbacks and draw 20000 shapes per frame. `draw` works only while the callback runs.
+render callbacks and draw 20000 shapes per frame. A block or a box counts as 15 shapes. `draw` works only while the
+callback runs.
 
 ## Permissions
 

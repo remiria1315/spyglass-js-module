@@ -19,9 +19,12 @@ render.on((draw) => {
   draw.rect(16, 16, width + 16, height + 12, { fill: true, color: "#000000b0", rounding: 4 });
   draw.text(24, 22, label, { size: 16 });
 
-  const origin = draw.worldToScreen({ x: 0, y: camera.y, z: 0 }, camera);
-  if (origin) {
-    draw.circle(origin.x, origin.y, 6, { fill: true, color: "#ff4040" });
-    draw.text(origin.x + 10, origin.y - 8, "0 0", { size: 14, color: "#ff4040" });
+  draw.setCamera(camera);
+  draw.block({ x: 0, y: camera.y - 2, z: 0 }, { color: "#ff4040", fill: true });
+
+  const mark = draw.worldToScreen({ x: 0.5, y: camera.y - 0.5, z: 0.5 });
+  if (mark) {
+    const size = Math.max(10, 0.4 * mark.scale);
+    draw.text(mark.x, mark.y, `${mark.depth.toFixed(1)}m`, { size, color: "#ff4040" });
   }
 });

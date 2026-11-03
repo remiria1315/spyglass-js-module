@@ -5,14 +5,17 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <deque>
 #include <format>
 #include <fstream>
 #include <exception>
+#include <initializer_list>
 #include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -44,6 +47,10 @@ constexpr std::size_t kRenderLimit = 16;
 constexpr std::size_t kDrawLimit = 20000;
 constexpr std::size_t kPolylineLimit = 4096;
 constexpr std::size_t kTextLimit = 4096;
+constexpr std::size_t kBoxShapes = 15;
+constexpr float kTextSizeLimit = 1024.0F;
+constexpr double kCoordinateLimit = 1.0e6;
+constexpr double kNearPlane = 0.05;
 constexpr std::uintmax_t kFileLimit = 16U * 1024U * 1024U;
 constexpr std::array<std::string_view, 4> kPermissions{"fs", "fs.all", "net", "process"};
 
@@ -777,88 +784,21 @@ export const bus = Object.freeze({
   },
 });
 
-const colorOf = (value) => {
-  if (value === undefined) return 0xffffffff;
-  if (typeof value === "number") return value >>> 0;
-  const match = typeof value === "string" ? /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(value) : null;
-  if (match === null) throw new TypeError("a color is #rrggbb, #rrggbbaa or a number 0xrrggbbaa");
-  return ((parseInt(match[1], 16) << 8) | parseInt(match[2] ?? "ff", 16)) >>> 0;
-};
-
-const numbers = (...values) => {
-  let finite = true;
-  for (const value of values) {
-    if (typeof value !== "number") throw new TypeError("expected a number");
-    if (!Number.isFinite(value)) finite = false;
-  }
-  return finite;
-};
-
 const frame = { width: 0, height: 0 };
 
 const draw = Object.freeze({
   get width() { return frame.width; },
   get height() { return frame.height; },
-  line(x1, y1, x2, y2, options = {}) {
-    const thickness = options.thickness ?? 1;
-    if (numbers(x1, y1, x2, y2, thickness)) native.drawLine(x1, y1, x2, y2, colorOf(options.color), thickness);
-  },
-  rect(x, y, width, height, options = {}) {
-    const thickness = options.thickness ?? 1;
-    const rounding = options.rounding ?? 0;
-    if (numbers(x, y, width, height, thickness, rounding)) {
-      native.drawRect(x, y, width, height, colorOf(options.color), thickness, rounding, options.fill === true);
-    }
-  },
-  circle(x, y, radius, options = {}) {
-    const thickness = options.thickness ?? 1;
-    const segments = options.segments ?? 0;
-    if (numbers(x, y, radius, thickness, segments)) {
-      native.drawCircle(x, y, radius, colorOf(options.color), thickness, options.fill === true, segments);
-    }
-  },
-  polyline(points, options = {}) {
-    if (!Array.isArray(points)) throw new TypeError("points is an array of { x, y }");
-    const thickness = options.thickness ?? 1;
-    const flat = points.flatMap((point) => [point.x, point.y]);
-    if (points.length >= 2 && numbers(thickness, ...flat)) {
-      native.drawPolyline(flat, colorOf(options.color), thickness, options.closed === true);
-    }
-  },
-  text(x, y, text, options = {}) {
-    const size = options.size ?? 0;
-    if (numbers(x, y, size)) native.drawText(x, y, size, colorOf(options.color), String(text));
-  },
-  textSize(text, size = 0) {
-    const [width, height] = native.textSize(numbers(size) ? size : 0, String(text));
-    return { width, height };
-  },
-  worldToScreen(point, camera) {
-    const fov = camera.fov ?? 70;
-    const finite = numbers(point.x, point.y, point.z, camera.x, camera.y, camera.z, camera.yaw, camera.pitch, fov);
-    if (!finite || frame.height <= 0) return null;
-    const yaw = (camera.yaw * Math.PI) / 180;
-    const pitch = (camera.pitch * Math.PI) / 180;
-    const forward = { x: -Math.sin(yaw) * Math.cos(pitch), y: -Math.sin(pitch), z: Math.cos(yaw) * Math.cos(pitch) };
-    const right = { x: -Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
-    const up = {
-      x: right.y * forward.z - right.z * forward.y,
-      y: right.z * forward.x - right.x * forward.z,
-      z: right.x * forward.y - right.y * forward.x,
-    };
-    const dx = point.x - camera.x;
-    const dy = point.y - camera.y;
-    const dz = point.z - camera.z;
-    const depth = dx * forward.x + dy * forward.y + dz * forward.z;
-    if (!(depth > 0.05)) return null;
-    const scale = 1 / (Math.tan((fov * Math.PI) / 360) * depth);
-    const aspect = frame.width / frame.height;
-    return {
-      x: (1 + ((dx * right.x + dy * right.y + dz * right.z) * scale) / aspect) * 0.5 * frame.width,
-      y: (1 - (dx * up.x + dy * up.y + dz * up.z) * scale) * 0.5 * frame.height,
-      depth,
-    };
-  },
+  setCamera: native.setCamera,
+  line: native.drawLine,
+  rect: native.drawRect,
+  circle: native.drawCircle,
+  polyline: native.drawPolyline,
+  text: native.drawText,
+  textSize: native.textSize,
+  worldToScreen: native.worldToScreen,
+  box: native.drawBox,
+  block: native.drawBlock,
 });
 
 export const render = Object.freeze({
@@ -2426,17 +2366,21 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
   };
   export type Color = string | number;
   export interface Camera { x: number; y: number; z: number; yaw: number; pitch: number; fov?: number }
-  export interface ScreenPoint { x: number; y: number; depth: number }
+  export interface ScreenPoint { x: number; y: number; depth: number; scale: number }
+  export interface BoxOptions { color?: Color; thickness?: number; fill?: boolean | Color; camera?: Camera }
   export interface Draw {
     readonly width: number;
     readonly height: number;
+    setCamera(camera: Camera): void;
     line(x1: number, y1: number, x2: number, y2: number, options?: { color?: Color; thickness?: number }): void;
     rect(x: number, y: number, width: number, height: number, options?: { color?: Color; thickness?: number; rounding?: number; fill?: boolean }): void;
     circle(x: number, y: number, radius: number, options?: { color?: Color; thickness?: number; fill?: boolean; segments?: number }): void;
     polyline(points: { x: number; y: number }[], options?: { color?: Color; thickness?: number; closed?: boolean }): void;
     text(x: number, y: number, text: string, options?: { color?: Color; size?: number }): void;
     textSize(text: string, size?: number): { width: number; height: number };
-    worldToScreen(point: Vec3, camera: Camera): ScreenPoint | null;
+    worldToScreen(point: Vec3, camera?: Camera): ScreenPoint | null;
+    box(min: Vec3, max: Vec3, options?: BoxOptions): void;
+    block(position: Vec3, options?: BoxOptions): void;
   }
   export const render: {
     on(callback: (draw: Draw) => void): () => void;
@@ -3387,6 +3331,225 @@ JSValue js_bus_emit(JSContext *ctx, JSValueConst, const int argc, JSValueConst *
     return result;
 }
 
+enum class Read { Error, Skip, Ok };
+
+struct Camera {
+    std::array<double, 3> position{};
+    std::array<double, 3> right{};
+    std::array<double, 3> up{};
+    std::array<double, 3> forward{};
+    double focal{1.0};
+    double width{0.0};
+    double height{0.0};
+};
+
+struct Screen {
+    float x{0.0F};
+    float y{0.0F};
+    float scale{0.0F};
+};
+
+Camera g_camera;
+std::optional<Read> g_camera_state;
+
+bool usable(const double value)
+{
+    return std::isfinite(value) && std::abs(value) <= kCoordinateLimit;
+}
+
+double dot(const std::array<double, 3> &a, const std::array<double, 3> &b)
+{
+    return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
+}
+
+std::array<double, 3> to_view(const Camera &camera, const std::array<double, 3> &world)
+{
+    const std::array<double, 3> offset{world[0] - camera.position[0], world[1] - camera.position[1],
+                                       world[2] - camera.position[2]};
+    return {dot(offset, camera.right), dot(offset, camera.up), dot(offset, camera.forward)};
+}
+
+Screen project(const Camera &camera, const std::array<double, 3> &view)
+{
+    const auto scale = camera.focal * camera.height * 0.5 / view[2];
+    return {static_cast<float>((camera.width * 0.5) + (view[0] * scale)),
+            static_cast<float>((camera.height * 0.5) - (view[1] * scale)), static_cast<float>(scale)};
+}
+
+bool begin_draw(JSContext *ctx, const int argc, const int needed, const std::size_t shapes)
+{
+    if (g_draw_list == nullptr) {
+        JS_ThrowInternalError(ctx, "draw calls work only inside a render callback");
+        return false;
+    }
+    if (argc < needed) {
+        JS_ThrowTypeError(ctx, "expected at least %d arguments", needed);
+        return false;
+    }
+    g_draw_count += shapes;
+    if (g_draw_count > kDrawLimit) {
+        JS_ThrowRangeError(ctx, "more than %zu draw calls in one frame", kDrawLimit);
+        return false;
+    }
+    return true;
+}
+
+Read read_numbers(JSContext *ctx, JSValueConst *values, const int count, double *out)
+{
+    bool ok = true;
+    for (int i = 0; i < count; ++i) {
+        if (!JS_IsNumber(values[i])) {
+            JS_ThrowTypeError(ctx, "expected a number");
+            return Read::Error;
+        }
+        JS_ToFloat64(ctx, &out[i], values[i]);
+        ok = ok && usable(out[i]);
+    }
+    return ok ? Read::Ok : Read::Skip;
+}
+
+Read read_fields(JSContext *ctx, JSValueConst object, const std::initializer_list<const char *> names, double *out)
+{
+    if (!JS_IsObject(object)) {
+        JS_ThrowTypeError(ctx, "expected an object with %s", *names.begin());
+        return Read::Error;
+    }
+    bool ok = true;
+    for (const auto *name : names) {
+        const auto property = JS_GetPropertyStr(ctx, object, name);
+        const auto numeric = JS_IsNumber(property);
+        if (numeric) {
+            JS_ToFloat64(ctx, out, property);
+            ok = ok && usable(*out);
+        }
+        else {
+            JS_ThrowTypeError(ctx, "'%s' is a number", name);
+        }
+        JS_FreeValue(ctx, property);
+        if (!numeric) {
+            return Read::Error;
+        }
+        ++out;
+    }
+    return ok ? Read::Ok : Read::Skip;
+}
+
+bool parse_color(JSContext *ctx, JSValueConst value, ImU32 &color)
+{
+    if (JS_IsNumber(value)) {
+        std::uint32_t rgba = 0;
+        JS_ToUint32(ctx, &rgba, value);
+        color = IM_COL32((rgba >> 24U) & 0xFFU, (rgba >> 16U) & 0xFFU, (rgba >> 8U) & 0xFFU, rgba & 0xFFU);
+        return true;
+    }
+    if (JS_IsString(value)) {
+        std::size_t length = 0;
+        const auto *const chars = JS_ToCStringLen(ctx, &length, value);
+        bool valid = chars != nullptr && chars[0] == '#' && (length == 7 || length == 9);
+        std::uint32_t digits = 0;
+        for (std::size_t i = 1; valid && i < length; ++i) {
+            const auto c = static_cast<unsigned char>(chars[i]);
+            valid = std::isxdigit(c) != 0;
+            const auto nibble = std::isdigit(c) != 0 ? c - '0' : std::tolower(c) - 'a' + 10;
+            digits = (digits << 4U) | static_cast<std::uint32_t>(nibble);
+        }
+        if (chars != nullptr) {
+            JS_FreeCString(ctx, chars);
+        }
+        if (valid) {
+            const auto rgba = length == 7 ? (digits << 8U) | 0xFFU : digits;
+            color = IM_COL32((rgba >> 24U) & 0xFFU, (rgba >> 16U) & 0xFFU, (rgba >> 8U) & 0xFFU, rgba & 0xFFU);
+            return true;
+        }
+    }
+    JS_ThrowTypeError(ctx, "a color is #rrggbb, #rrggbbaa or a number 0xrrggbbaa");
+    return false;
+}
+
+bool option_number(JSContext *ctx, JSValueConst options, const char *name, float &value)
+{
+    if (!JS_IsObject(options)) {
+        return true;
+    }
+    const auto property = JS_GetPropertyStr(ctx, options, name);
+    bool ok = true;
+    if (JS_IsNumber(property)) {
+        double number = 0;
+        JS_ToFloat64(ctx, &number, property);
+        value = usable(number) ? static_cast<float>(number) : value;
+    }
+    else if (!JS_IsUndefined(property)) {
+        JS_ThrowTypeError(ctx, "option '%s' is a number", name);
+        ok = false;
+    }
+    JS_FreeValue(ctx, property);
+    return ok;
+}
+
+bool option_flag(JSContext *ctx, JSValueConst options, const char *name, bool &value)
+{
+    if (!JS_IsObject(options)) {
+        return true;
+    }
+    const auto property = JS_GetPropertyStr(ctx, options, name);
+    if (!JS_IsUndefined(property)) {
+        value = JS_ToBool(ctx, property) > 0;
+    }
+    JS_FreeValue(ctx, property);
+    return true;
+}
+
+bool option_color(JSContext *ctx, JSValueConst options, const char *name, ImU32 &color)
+{
+    if (!JS_IsObject(options)) {
+        return true;
+    }
+    const auto property = JS_GetPropertyStr(ctx, options, name);
+    const auto ok = JS_IsUndefined(property) || parse_color(ctx, property, color);
+    JS_FreeValue(ctx, property);
+    return ok;
+}
+
+Read make_camera(JSContext *ctx, JSValueConst object, Camera &camera)
+{
+    std::array<double, 5> fields{};
+    const auto read = read_fields(ctx, object, {"x", "y", "z", "yaw", "pitch"}, fields.data());
+    float fov = 70.0F;
+    if (read == Read::Error || !option_number(ctx, object, "fov", fov)) {
+        return Read::Error;
+    }
+    const auto display = ImGui::GetIO().DisplaySize;
+    if (read == Read::Skip || fov <= 1.0F || fov >= 170.0F || display.y <= 0.0F) {
+        return Read::Skip;
+    }
+    const auto yaw = fields[3] * std::numbers::pi / 180.0;
+    const auto pitch = fields[4] * std::numbers::pi / 180.0;
+    camera.position = {fields[0], fields[1], fields[2]};
+    camera.forward = {-std::sin(yaw) * std::cos(pitch), -std::sin(pitch), std::cos(yaw) * std::cos(pitch)};
+    camera.right = {-std::cos(yaw), 0.0, -std::sin(yaw)};
+    camera.up = {(camera.right[1] * camera.forward[2]) - (camera.right[2] * camera.forward[1]),
+                 (camera.right[2] * camera.forward[0]) - (camera.right[0] * camera.forward[2]),
+                 (camera.right[0] * camera.forward[1]) - (camera.right[1] * camera.forward[0])};
+    camera.focal = 1.0 / std::tan(fov * std::numbers::pi / 360.0);
+    camera.width = display.x;
+    camera.height = display.y;
+    return Read::Ok;
+}
+
+Read pick_camera(JSContext *ctx, JSValueConst given, Camera &local, const Camera *&camera)
+{
+    if (JS_IsObject(given)) {
+        camera = &local;
+        return make_camera(ctx, given, local);
+    }
+    if (!g_camera_state) {
+        JS_ThrowInternalError(ctx, "no camera: call draw.setCamera first or pass one");
+        return Read::Error;
+    }
+    camera = &g_camera;
+    return *g_camera_state;
+}
+
 JSValue js_render_on(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
     auto *const module = module_of(ctx);
@@ -3416,128 +3579,363 @@ JSValue js_render_off(JSContext *ctx, JSValueConst, const int argc, JSValueConst
     return JS_UNDEFINED;
 }
 
-enum DrawOp : int { kDrawLine, kDrawRect, kDrawCircle, kDrawText, kDrawPolyline };
-
-constexpr std::array<int, 5> kDrawArity{6, 8, 7, 5, 4};
-
-float float_at(JSContext *ctx, JSValueConst *argv, const int index)
+JSValue js_set_camera(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
-    double value = 0;
-    JS_ToFloat64(ctx, &value, argv[index]);
-    return static_cast<float>(value);
+    if (!begin_draw(ctx, argc, 1, 0)) {
+        return JS_EXCEPTION;
+    }
+    const auto read = make_camera(ctx, argv[0], g_camera);
+    if (read == Read::Error) {
+        return JS_EXCEPTION;
+    }
+    g_camera_state = read;
+    return JS_UNDEFINED;
 }
 
-ImU32 color_at(JSContext *ctx, JSValueConst *argv, const int index)
+JSValue js_line(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
-    std::uint32_t rgba = 0;
-    JS_ToUint32(ctx, &rgba, argv[index]);
-    return IM_COL32((rgba >> 24U) & 0xFFU, (rgba >> 16U) & 0xFFU, (rgba >> 8U) & 0xFFU, rgba & 0xFFU);
+    std::array<double, 4> p{};
+    ImU32 color = IM_COL32_WHITE;
+    float thickness = 1.0F;
+    const auto options = argc > 4 ? argv[4] : JS_UNDEFINED;
+    if (!begin_draw(ctx, argc, 4, 1)) {
+        return JS_EXCEPTION;
+    }
+    const auto read = read_numbers(ctx, argv, 4, p.data());
+    if (read == Read::Error || !option_color(ctx, options, "color", color) ||
+        !option_number(ctx, options, "thickness", thickness)) {
+        return JS_EXCEPTION;
+    }
+    if (read == Read::Ok) {
+        g_draw_list->AddLine(ImVec2{static_cast<float>(p[0]), static_cast<float>(p[1])},
+                             ImVec2{static_cast<float>(p[2]), static_cast<float>(p[3])}, color, thickness);
+    }
+    return JS_UNDEFINED;
 }
 
-JSValue js_draw(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv, const int op)
+JSValue js_rect(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
-    if (g_draw_list == nullptr) {
-        return JS_ThrowInternalError(ctx, "draw calls work only inside a render callback");
+    std::array<double, 4> p{};
+    ImU32 color = IM_COL32_WHITE;
+    float thickness = 1.0F;
+    float rounding = 0.0F;
+    bool fill = false;
+    const auto options = argc > 4 ? argv[4] : JS_UNDEFINED;
+    if (!begin_draw(ctx, argc, 4, 1)) {
+        return JS_EXCEPTION;
     }
-    if (argc < kDrawArity[static_cast<std::size_t>(op)]) {
-        return JS_ThrowTypeError(ctx, "missing arguments");
+    const auto read = read_numbers(ctx, argv, 4, p.data());
+    if (read == Read::Error || !option_color(ctx, options, "color", color) ||
+        !option_number(ctx, options, "thickness", thickness) || !option_number(ctx, options, "rounding", rounding) ||
+        !option_flag(ctx, options, "fill", fill)) {
+        return JS_EXCEPTION;
     }
-    if (++g_draw_count > kDrawLimit) {
-        return JS_ThrowRangeError(ctx, "more than %zu draw calls in one frame", kDrawLimit);
-    }
-    switch (op) {
-    case kDrawLine:
-        g_draw_list->AddLine(ImVec2{float_at(ctx, argv, 0), float_at(ctx, argv, 1)},
-                             ImVec2{float_at(ctx, argv, 2), float_at(ctx, argv, 3)}, color_at(ctx, argv, 4),
-                             float_at(ctx, argv, 5));
-        break;
-    case kDrawRect: {
-        const ImVec2 from{float_at(ctx, argv, 0), float_at(ctx, argv, 1)};
-        const ImVec2 to{from.x + float_at(ctx, argv, 2), from.y + float_at(ctx, argv, 3)};
-        if (JS_ToBool(ctx, argv[7]) > 0) {
-            g_draw_list->AddRectFilled(from, to, color_at(ctx, argv, 4), float_at(ctx, argv, 6));
+    if (read == Read::Ok) {
+        const ImVec2 from{static_cast<float>(p[0]), static_cast<float>(p[1])};
+        const ImVec2 to{static_cast<float>(p[0] + p[2]), static_cast<float>(p[1] + p[3])};
+        if (fill) {
+            g_draw_list->AddRectFilled(from, to, color, rounding);
         }
         else {
-            g_draw_list->AddRect(from, to, color_at(ctx, argv, 4), float_at(ctx, argv, 6), ImDrawFlags_None,
-                                 float_at(ctx, argv, 5));
+            g_draw_list->AddRect(from, to, color, rounding, ImDrawFlags_None, thickness);
         }
-        break;
     }
-    case kDrawCircle: {
-        const ImVec2 center{float_at(ctx, argv, 0), float_at(ctx, argv, 1)};
-        const auto segments = static_cast<int>(float_at(ctx, argv, 6));
-        if (JS_ToBool(ctx, argv[5]) > 0) {
-            g_draw_list->AddCircleFilled(center, float_at(ctx, argv, 2), color_at(ctx, argv, 3), segments);
+    return JS_UNDEFINED;
+}
+
+JSValue js_circle(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    std::array<double, 3> p{};
+    ImU32 color = IM_COL32_WHITE;
+    float thickness = 1.0F;
+    float segments = 0.0F;
+    bool fill = false;
+    const auto options = argc > 3 ? argv[3] : JS_UNDEFINED;
+    if (!begin_draw(ctx, argc, 3, 1)) {
+        return JS_EXCEPTION;
+    }
+    const auto read = read_numbers(ctx, argv, 3, p.data());
+    if (read == Read::Error || !option_color(ctx, options, "color", color) ||
+        !option_number(ctx, options, "thickness", thickness) || !option_number(ctx, options, "segments", segments) ||
+        !option_flag(ctx, options, "fill", fill)) {
+        return JS_EXCEPTION;
+    }
+    if (read == Read::Ok) {
+        const ImVec2 center{static_cast<float>(p[0]), static_cast<float>(p[1])};
+        const auto count = static_cast<int>(std::clamp(segments, 0.0F, 512.0F));
+        if (fill) {
+            g_draw_list->AddCircleFilled(center, static_cast<float>(p[2]), color, count);
         }
         else {
-            g_draw_list->AddCircle(center, float_at(ctx, argv, 2), color_at(ctx, argv, 3), segments,
-                                   float_at(ctx, argv, 4));
+            g_draw_list->AddCircle(center, static_cast<float>(p[2]), color, count, thickness);
         }
-        break;
     }
-    case kDrawText: {
-        std::size_t length = 0;
-        const auto *const text = JS_ToCStringLen(ctx, &length, argv[4]);
-        if (text == nullptr) {
+    return JS_UNDEFINED;
+}
+
+JSValue js_polyline(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    ImU32 color = IM_COL32_WHITE;
+    float thickness = 1.0F;
+    bool closed = false;
+    const auto options = argc > 1 ? argv[1] : JS_UNDEFINED;
+    if (!begin_draw(ctx, argc, 1, 1)) {
+        return JS_EXCEPTION;
+    }
+    if (!JS_IsArray(argv[0])) {
+        return JS_ThrowTypeError(ctx, "points is an array of { x, y }");
+    }
+    if (!option_color(ctx, options, "color", color) || !option_number(ctx, options, "thickness", thickness) ||
+        !option_flag(ctx, options, "closed", closed)) {
+        return JS_EXCEPTION;
+    }
+    std::uint32_t length = 0;
+    const auto size = JS_GetPropertyStr(ctx, argv[0], "length");
+    JS_ToUint32(ctx, &length, size);
+    JS_FreeValue(ctx, size);
+    if (length > kPolylineLimit) {
+        return JS_ThrowRangeError(ctx, "a polyline takes at most %zu points", kPolylineLimit);
+    }
+    std::vector<ImVec2> points;
+    points.reserve(length);
+    bool finite = true;
+    for (std::uint32_t i = 0; i < length; ++i) {
+        const auto element = JS_GetPropertyUint32(ctx, argv[0], i);
+        std::array<double, 2> xy{};
+        const auto read = read_fields(ctx, element, {"x", "y"}, xy.data());
+        JS_FreeValue(ctx, element);
+        if (read == Read::Error) {
             return JS_EXCEPTION;
         }
-        g_draw_list->AddText(nullptr, float_at(ctx, argv, 2), ImVec2{float_at(ctx, argv, 0), float_at(ctx, argv, 1)},
-                             color_at(ctx, argv, 3), text, text + std::min(length, kTextLimit));
-        JS_FreeCString(ctx, text);
-        break;
+        finite = finite && read == Read::Ok;
+        points.push_back(ImVec2{static_cast<float>(xy[0]), static_cast<float>(xy[1])});
     }
-    case kDrawPolyline: {
-        if (!JS_IsArray(argv[0])) {
-            return JS_ThrowTypeError(ctx, "expected an array of numbers");
-        }
-        std::uint32_t length = 0;
-        const auto size = JS_GetPropertyStr(ctx, argv[0], "length");
-        JS_ToUint32(ctx, &length, size);
-        JS_FreeValue(ctx, size);
-        if (length < 4 || length % 2 != 0 || length > kPolylineLimit * 2) {
-            return JS_ThrowRangeError(ctx, "a polyline takes 2 to %zu points as x, y pairs", kPolylineLimit);
-        }
-        std::vector<ImVec2> points(length / 2);
-        for (std::uint32_t i = 0; i < length; ++i) {
-            const auto element = JS_GetPropertyUint32(ctx, argv[0], i);
-            double value = 0;
-            JS_ToFloat64(ctx, &value, element);
-            JS_FreeValue(ctx, element);
-            (i % 2 == 0 ? points[i / 2].x : points[i / 2].y) = static_cast<float>(value);
-        }
-        g_draw_list->AddPolyline(points.data(), static_cast<int>(points.size()), color_at(ctx, argv, 1),
-                                 JS_ToBool(ctx, argv[3]) > 0 ? ImDrawFlags_Closed : ImDrawFlags_None,
-                                 float_at(ctx, argv, 2));
-        break;
+    if (finite && points.size() >= 2) {
+        g_draw_list->AddPolyline(points.data(), static_cast<int>(points.size()), color,
+                                 closed ? ImDrawFlags_Closed : ImDrawFlags_None, thickness);
     }
-    default:
-        break;
+    return JS_UNDEFINED;
+}
+
+JSValue js_text(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    std::array<double, 2> p{};
+    ImU32 color = IM_COL32_WHITE;
+    float size = 0.0F;
+    const auto options = argc > 3 ? argv[3] : JS_UNDEFINED;
+    if (!begin_draw(ctx, argc, 3, 1)) {
+        return JS_EXCEPTION;
     }
+    const auto read = read_numbers(ctx, argv, 2, p.data());
+    if (read == Read::Error || !option_color(ctx, options, "color", color) ||
+        !option_number(ctx, options, "size", size)) {
+        return JS_EXCEPTION;
+    }
+    std::size_t length = 0;
+    const auto *const text = JS_ToCStringLen(ctx, &length, argv[2]);
+    if (text == nullptr) {
+        return JS_EXCEPTION;
+    }
+    if (read == Read::Ok) {
+        g_draw_list->AddText(nullptr, std::clamp(size, 0.0F, kTextSizeLimit),
+                             ImVec2{static_cast<float>(p[0]), static_cast<float>(p[1])}, color, text,
+                             text + std::min(length, kTextLimit));
+    }
+    JS_FreeCString(ctx, text);
     return JS_UNDEFINED;
 }
 
 JSValue js_text_size(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
-    if (g_draw_list == nullptr) {
-        return JS_ThrowInternalError(ctx, "textSize works only inside a render callback");
+    float size = 0.0F;
+    if (!begin_draw(ctx, argc, 1, 0)) {
+        return JS_EXCEPTION;
     }
-    if (argc < 2) {
-        return JS_ThrowTypeError(ctx, "missing arguments");
+    if (argc > 1 && JS_IsNumber(argv[1])) {
+        double requested = 0;
+        JS_ToFloat64(ctx, &requested, argv[1]);
+        size = usable(requested) ? static_cast<float>(requested) : 0.0F;
     }
     std::size_t length = 0;
-    const auto *const text = JS_ToCStringLen(ctx, &length, argv[1]);
+    const auto *const text = JS_ToCStringLen(ctx, &length, argv[0]);
     if (text == nullptr) {
         return JS_EXCEPTION;
     }
-    const auto requested = float_at(ctx, argv, 0);
-    const auto extent = ImGui::GetFont()->CalcTextSizeA(requested > 0.0F ? requested : ImGui::GetFontSize(),
+    const auto extent = ImGui::GetFont()->CalcTextSizeA(size > 0.0F ? std::min(size, kTextSizeLimit)
+                                                                    : ImGui::GetFontSize(),
                                                         std::numeric_limits<float>::max(), 0.0F, text,
                                                         text + std::min(length, kTextLimit));
     JS_FreeCString(ctx, text);
-    const auto result = JS_NewArray(ctx);
-    JS_SetPropertyUint32(ctx, result, 0, JS_NewFloat64(ctx, extent.x));
-    JS_SetPropertyUint32(ctx, result, 1, JS_NewFloat64(ctx, extent.y));
+    const auto result = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, result, "width", JS_NewFloat64(ctx, extent.x));
+    JS_SetPropertyStr(ctx, result, "height", JS_NewFloat64(ctx, extent.y));
     return result;
+}
+
+JSValue js_world_to_screen(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
+{
+    std::array<double, 3> point{};
+    Camera local;
+    const Camera *camera = nullptr;
+    if (!begin_draw(ctx, argc, 1, 0)) {
+        return JS_EXCEPTION;
+    }
+    const auto read = read_fields(ctx, argv[0], {"x", "y", "z"}, point.data());
+    const auto given = pick_camera(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, local, camera);
+    if (read == Read::Error || given == Read::Error) {
+        return JS_EXCEPTION;
+    }
+    if (read == Read::Skip || given == Read::Skip) {
+        return JS_NULL;
+    }
+    const auto view = to_view(*camera, point);
+    if (view[2] <= kNearPlane) {
+        return JS_NULL;
+    }
+    const auto screen = project(*camera, view);
+    const auto result = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, result, "x", JS_NewFloat64(ctx, screen.x));
+    JS_SetPropertyStr(ctx, result, "y", JS_NewFloat64(ctx, screen.y));
+    JS_SetPropertyStr(ctx, result, "depth", JS_NewFloat64(ctx, view[2]));
+    JS_SetPropertyStr(ctx, result, "scale", JS_NewFloat64(ctx, screen.scale));
+    return result;
+}
+
+JSValue js_box(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv, const int block)
+{
+    std::array<double, 3> low{};
+    std::array<double, 3> high{};
+    ImU32 color = IM_COL32_WHITE;
+    float thickness = 1.0F;
+    const auto options = argc > 2 - block ? argv[2 - block] : JS_UNDEFINED;
+    if (!begin_draw(ctx, argc, 2 - block, kBoxShapes)) {
+        return JS_EXCEPTION;
+    }
+    auto read = read_fields(ctx, argv[0], {"x", "y", "z"}, low.data());
+    if (block != 0) {
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            low[axis] = std::floor(low[axis]);
+            high[axis] = low[axis] + 1.0;
+        }
+    }
+    else if (read != Read::Error && read_fields(ctx, argv[1], {"x", "y", "z"}, high.data()) == Read::Error) {
+        read = Read::Error;
+    }
+    const auto property = JS_IsObject(options) ? JS_GetPropertyStr(ctx, options, "camera") : JS_UNDEFINED;
+    Camera local;
+    const Camera *camera = nullptr;
+    const auto given = pick_camera(ctx, property, local, camera);
+    JS_FreeValue(ctx, property);
+    if (read == Read::Error || given == Read::Error || !option_color(ctx, options, "color", color) ||
+        !option_number(ctx, options, "thickness", thickness)) {
+        return JS_EXCEPTION;
+    }
+    std::optional<ImU32> fill;
+    if (JS_IsObject(options)) {
+        const auto value = JS_GetPropertyStr(ctx, options, "fill");
+        if (JS_IsBool(value) && JS_ToBool(ctx, value) > 0) {
+            const auto quarter = ((color >> IM_COL32_A_SHIFT) / 4U) << IM_COL32_A_SHIFT;
+            fill = (color & ~static_cast<ImU32>(IM_COL32_A_MASK)) | quarter;
+        }
+        else if (!JS_IsUndefined(value) && !JS_IsBool(value)) {
+            ImU32 chosen = 0;
+            if (!parse_color(ctx, value, chosen)) {
+                JS_FreeValue(ctx, value);
+                return JS_EXCEPTION;
+            }
+            fill = chosen;
+        }
+        JS_FreeValue(ctx, value);
+    }
+    if (read == Read::Skip || given == Read::Skip || low[0] > high[0] || low[1] > high[1] || low[2] > high[2]) {
+        return JS_UNDEFINED;
+    }
+
+    if (fill) {
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            for (const auto side : {0, 1}) {
+                const auto faces_camera = side == 0 ? camera->position[axis] < low[axis]
+                                                    : camera->position[axis] > high[axis];
+                if (!faces_camera) {
+                    continue;
+                }
+                const auto u = (axis + 1) % 3;
+                const auto v = (axis + 2) % 3;
+                std::array<std::array<double, 3>, 4> corners{};
+                for (std::size_t i = 0; i < 4; ++i) {
+                    corners[i][axis] = side == 0 ? low[axis] : high[axis];
+                    corners[i][u] = (i == 1 || i == 2) ? high[u] : low[u];
+                    corners[i][v] = i >= 2 ? high[v] : low[v];
+                    corners[i] = to_view(*camera, corners[i]);
+                }
+                std::vector<std::array<double, 3>> clipped;
+                for (std::size_t i = 0; i < corners.size(); ++i) {
+                    const auto &from = corners[i];
+                    const auto &to = corners[(i + 1) % corners.size()];
+                    const auto from_in = from[2] > kNearPlane;
+                    if (from_in) {
+                        clipped.push_back(from);
+                    }
+                    if (from_in != (to[2] > kNearPlane)) {
+                        const auto t = (kNearPlane - from[2]) / (to[2] - from[2]);
+                        clipped.push_back({from[0] + (t * (to[0] - from[0])), from[1] + (t * (to[1] - from[1])),
+                                           kNearPlane});
+                    }
+                }
+                if (clipped.size() < 3) {
+                    continue;
+                }
+                std::vector<ImVec2> outline;
+                for (const auto &point : clipped) {
+                    const auto screen = project(*camera, point);
+                    outline.push_back(ImVec2{screen.x, screen.y});
+                }
+                double area = 0.0;
+                for (std::size_t i = 0; i < outline.size(); ++i) {
+                    const auto &a = outline[i];
+                    const auto &b = outline[(i + 1) % outline.size()];
+                    area += (static_cast<double>(a.x) * b.y) - (static_cast<double>(b.x) * a.y);
+                }
+                if (area < 0.0) {
+                    std::ranges::reverse(outline);
+                }
+                g_draw_list->AddConvexPolyFilled(outline.data(), static_cast<int>(outline.size()), *fill);
+            }
+        }
+    }
+
+    std::array<std::array<double, 3>, 8> corners{};
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        corners[i] = to_view(*camera, {(i & 1U) != 0 ? high[0] : low[0], (i & 2U) != 0 ? high[1] : low[1],
+                                       (i & 4U) != 0 ? high[2] : low[2]});
+    }
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        for (const std::size_t bit : {1U, 2U, 4U}) {
+            if ((i & bit) != 0) {
+                continue;
+            }
+            auto from = corners[i];
+            auto to = corners[i | bit];
+            if (from[2] <= kNearPlane && to[2] <= kNearPlane) {
+                continue;
+            }
+            const auto cut = [](std::array<double, 3> &outside, const std::array<double, 3> &inside) {
+                const auto t = (kNearPlane - outside[2]) / (inside[2] - outside[2]);
+                outside = {outside[0] + (t * (inside[0] - outside[0])), outside[1] + (t * (inside[1] - outside[1])),
+                           kNearPlane};
+            };
+            if (from[2] <= kNearPlane) {
+                cut(from, to);
+            }
+            else if (to[2] <= kNearPlane) {
+                cut(to, from);
+            }
+            const auto a = project(*camera, from);
+            const auto b = project(*camera, to);
+            g_draw_list->AddLine(ImVec2{a.x, a.y}, ImVec2{b.x, b.y}, color, thickness);
+        }
+    }
+    return JS_UNDEFINED;
 }
 
 JSValue js_ws_close(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
@@ -3828,16 +4226,22 @@ std::string load(const std::string &name)
     JS_SetPropertyStr(module.ctx, native, "busEmit", JS_NewCFunction(module.ctx, js_bus_emit, "busEmit", 2));
     JS_SetPropertyStr(module.ctx, native, "renderOn", JS_NewCFunction(module.ctx, js_render_on, "renderOn", 1));
     JS_SetPropertyStr(module.ctx, native, "renderOff", JS_NewCFunction(module.ctx, js_render_off, "renderOff", 1));
-    JS_SetPropertyStr(module.ctx, native, "textSize", JS_NewCFunction(module.ctx, js_text_size, "textSize", 2));
-    for (const auto &[name, op] : std::array<std::pair<const char *, DrawOp>, 5>{{{"drawLine", kDrawLine},
-                                                                                  {"drawRect", kDrawRect},
-                                                                                  {"drawCircle", kDrawCircle},
-                                                                                  {"drawText", kDrawText},
-                                                                                  {"drawPolyline", kDrawPolyline}}}) {
-        JS_SetPropertyStr(module.ctx, native, name,
-                          JS_NewCFunctionMagic(module.ctx, js_draw, name, kDrawArity[static_cast<std::size_t>(op)],
-                                               JS_CFUNC_generic_magic, op));
+    for (const auto &[name, function] : std::array<std::pair<const char *, JSCFunction *>, 8>{{
+             {"setCamera", js_set_camera},
+             {"drawLine", js_line},
+             {"drawRect", js_rect},
+             {"drawCircle", js_circle},
+             {"drawPolyline", js_polyline},
+             {"drawText", js_text},
+             {"textSize", js_text_size},
+             {"worldToScreen", js_world_to_screen},
+         }}) {
+        JS_SetPropertyStr(module.ctx, native, name, JS_NewCFunction(module.ctx, function, name, 2));
     }
+    JS_SetPropertyStr(module.ctx, native, "drawBox",
+                      JS_NewCFunctionMagic(module.ctx, js_box, "drawBox", 3, JS_CFUNC_generic_magic, 0));
+    JS_SetPropertyStr(module.ctx, native, "drawBlock",
+                      JS_NewCFunctionMagic(module.ctx, js_box, "drawBlock", 2, JS_CFUNC_generic_magic, 1));
     JS_SetPropertyStr(module.ctx, native, "platform",
 #ifdef _WIN32
                       JS_NewString(module.ctx, "windows")
@@ -4298,6 +4702,7 @@ void render()
             tokens.push_back(renderer.token);
         }
         g_draw_count = 0;
+        g_camera_state.reset();
         for (const auto token : tokens) {
             const auto found = std::ranges::find(module.renderers, token, &Renderer::token);
             if (found == module.renderers.end()) {
