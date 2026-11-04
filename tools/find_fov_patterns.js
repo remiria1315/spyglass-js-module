@@ -32,6 +32,7 @@ async function main() {
       callers: { type: "string" },
       vtable: { type: "string" },
       refs: { type: "string" },
+      vslot: { type: "string", multiple: true },
       base: { type: "string" },
       out: { type: "string", default: "fov_disasm.txt" },
     },
@@ -39,7 +40,7 @@ async function main() {
   if (positionals.length < 1) {
     console.error(
       "usage: node find_fov_patterns.js exe [--top N] [--memory] [--float V]... [--string S]... " +
-        "[--max-size N] [--min-floats N] [--disasm RVA]... [--callers RVA] [--vtable RVA [--base HEX]] [--refs RVA] [--out FILE]",
+        "[--max-size N] [--min-floats N] [--disasm RVA]... [--callers RVA] [--vtable RVA [--base HEX]] [--refs RVA] [--vslot OFFSET]... [--out FILE]",
     );
     process.exit(2);
   }
@@ -149,6 +150,37 @@ async function main() {
       }
     }
     if (found === 0) die(`no lea of rva 0x${hex(wanted)}`);
+    return;
+  }
+
+  if (values.vslot !== undefined) {
+    const offsets = values.vslot.map(Number);
+    const seen = new Map();
+    let owner = 0;
+    for (const section of pe.sections) {
+      if (!(section.Characteristics & EXECUTE_FLAG)) continue;
+      const last = Math.min(section.VirtualAddress + section.Misc_VirtualSize, image.length) - 8;
+      for (let i = section.VirtualAddress; i < last; i++) {
+        if ((image[i] & 0xf8) !== 0x48 || image[i + 1] !== 0x8b) continue;
+        const mode = image[i + 2] >> 6;
+        if (mode !== 1 && mode !== 2) continue;
+        const at = i + 3 + ((image[i + 2] & 7) === 4 ? 1 : 0);
+        const disp = mode === 1 ? image.readInt8(at) : image.readInt32LE(at);
+        if (!offsets.includes(disp)) continue;
+        while (owner < functions.length && functions[owner][1] <= i) owner++;
+        if (owner === functions.length || functions[owner][0] > i) continue;
+        const [begin, end] = functions[owner];
+        if (end - begin > maxSize) continue;
+        if (!seen.has(begin)) seen.set(begin, { end, hits: new Set() });
+        seen.get(begin).hits.add(disp);
+      }
+    }
+    const matches = [...seen].filter(([, f]) => f.hits.size === offsets.length);
+    for (const [begin, f] of matches.slice(0, top)) {
+      console.log(`function rva 0x${hex(begin)}, size 0x${hex(f.end - begin)}`);
+    }
+    console.log(`${matches.length} function(s) load every one of ${offsets.map((o) => "0x" + hex(o)).join(", ")}`);
+    if (matches.length === 0) die("nothing matched; raise --max-size or drop an offset");
     return;
   }
 
