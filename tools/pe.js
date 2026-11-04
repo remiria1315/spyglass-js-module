@@ -15,6 +15,7 @@ function parsePE(data) {
   const sizeOfOptionalHeader = data.readUInt16LE(coff + 16);
   const opt = coff + 20;
   const isPE32Plus = data.readUInt16LE(opt) === 0x20b;
+  const imageBase = isPE32Plus ? data.readBigUInt64LE(opt + 24) : BigInt(data.readUInt32LE(opt + 28));
   const sizeOfImage = data.readUInt32LE(opt + 56);
   const sizeOfHeaders = data.readUInt32LE(opt + 60);
   const directoryOffset = opt + (isPE32Plus ? 112 : 96);
@@ -40,7 +41,7 @@ function parsePE(data) {
       Characteristics: data.readUInt32LE(o + 36),
     });
   }
-  return { sizeOfImage, sizeOfHeaders, directories, sections };
+  return { imageBase, sizeOfImage, sizeOfHeaders, directories, sections };
 }
 
 // pe.get_memory_mapped_image() 相当

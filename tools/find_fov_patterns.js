@@ -30,13 +30,15 @@ async function main() {
       "min-floats": { type: "string", default: "2" },
       disasm: { type: "string" },
       callers: { type: "string" },
+      vtable: { type: "string" },
+      base: { type: "string" },
       out: { type: "string", default: "fov_disasm.txt" },
     },
   });
   if (positionals.length < 1) {
     console.error(
       "usage: node find_fov_patterns.js exe [--top N] [--memory] [--float V]... [--string S]... " +
-        "[--max-size N] [--min-floats N] [--disasm RVA] [--callers RVA] [--out FILE]",
+        "[--max-size N] [--min-floats N] [--disasm RVA] [--callers RVA] [--vtable RVA [--base HEX]] [--out FILE]",
     );
     process.exit(2);
   }
@@ -82,6 +84,45 @@ async function main() {
       }
     }
     if (found === 0) die(`no direct call or jmp to rva 0x${hex(callee)}; it may be reached through a vtable`);
+    return;
+  }
+
+  if (values.vtable !== undefined) {
+    const base = values.base !== undefined ? BigInt(values.base) : pe.imageBase;
+    const wanted = base + BigInt(Number(values.vtable));
+    const low = Number(wanted & 0xffffffffn);
+    const high = Number(wanted >> 32n);
+    const executable = pe.sections.filter((s) => s.Characteristics & EXECUTE_FLAG);
+    const pointsIntoCode = (at) => {
+      const rva = Number(image.readBigUInt64LE(at) - base);
+      return executable.some((s) => s.VirtualAddress <= rva && rva < s.VirtualAddress + s.Misc_VirtualSize);
+    };
+    let found = 0;
+    for (const section of pe.sections) {
+      if (section.Characteristics & EXECUTE_FLAG) continue;
+      const last = Math.min(section.VirtualAddress + section.Misc_VirtualSize, image.length) - 8;
+      for (let i = section.VirtualAddress; i < last; i += 8) {
+        if (image.readUInt32LE(i) !== low || image.readUInt32LE(i + 4) !== high) continue;
+        let start = i;
+        while (start >= 16 && pointsIntoCode(start - 8)) start -= 8;
+        let name = "unknown";
+        if (start >= 8) {
+          const col = Number(image.readBigUInt64LE(start - 8) - base);
+          if (col > 0 && col + 24 <= image.length && image.readUInt32LE(col) <= 1) {
+            const descriptor = image.readUInt32LE(col + 12) + 16;
+            const end = image.indexOf(0, descriptor);
+            if (descriptor < image.length && end !== -1 && end - descriptor < 256) {
+              name = image.toString("latin1", descriptor, end);
+            }
+          }
+        }
+        console.log(`slot ${(i - start) / 8} at rva 0x${hex(i)}, table starts at rva 0x${hex(start)}, class ${name}`);
+        found++;
+      }
+    }
+    if (found === 0) {
+      die(`no pointer to 0x${hex(Number(wanted))} in the data sections; pass --base with the base that dump_client.js printed`);
+    }
     return;
   }
 
