@@ -89,11 +89,7 @@ async function main() {
   const disasm = (begin, end) => md.disasm(image.subarray(begin, end), { address: begin });
 
   if (disasmRva !== null) {
-    const dumped = disassemblyOf(disasm, functions, disasmRva);
-    if (!dumped) {
-      die(`rva 0x${hex(disasmRva)} is not inside a function of the exception table`);
-    }
-    const { begin, text } = dumped;
+    const { begin, text } = disassemblyOf(disasm, functions, disasmRva);
     fs.writeFileSync(values.out, text);
     console.log(`wrote the disassembly of 0x${hex(begin)} to ${values.out}`);
     return;

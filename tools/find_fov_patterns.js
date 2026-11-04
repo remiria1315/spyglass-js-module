@@ -62,10 +62,7 @@ async function main() {
   if (values.disasm !== undefined) {
     let text = "";
     for (const argument of values.disasm) {
-      const rva = Number(argument);
-      const dumped = disassemblyOf(disasm, functions, rva);
-      if (!dumped) die(`rva 0x${hex(rva)} is not inside a function of the exception table`);
-      text += `${dumped.text}\n`;
+      text += `${disassemblyOf(disasm, functions, Number(argument)).text}\n`;
     }
     fs.writeFileSync(values.out, text);
     console.log(`wrote the disassembly of ${values.disasm.length} function(s) to ${values.out}`);

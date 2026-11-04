@@ -1,5 +1,6 @@
 const EXECUTE_FLAG = 0x20000000;
 const EXCEPTION_DIRECTORY = 3;
+const LEAF_WINDOW = 0x80;
 
 // pefile の代わり。PE32+ / PE32 のヘッダーとセクション表だけ読む
 function parsePE(data) {
@@ -184,13 +185,15 @@ function loadFunctions(image, pe) {
 
 function disassemblyOf(disasm, functions, rva) {
   const found = functions.find(([b, e]) => b <= rva && rva < e);
-  if (!found) return null;
-  const [begin, end] = found;
-  let text = `function rva 0x${hex(begin)}, size 0x${hex(end - begin)}\n`;
+  const [begin, end] = found ?? [rva, rva + LEAF_WINDOW];
+  let text = found
+    ? `function rva 0x${hex(begin)}, size 0x${hex(end - begin)}\n`
+    : `leaf function rva 0x${hex(begin)}, not in the exception table, up to the first ret\n`;
   for (const insn of disasm(begin, end)) {
     const address = Number(insn.address);
     const bytes = Array.from(insn.bytes, (b) => hex(b, 2)).join(" ");
     text += `+0x${hex(address - begin, 4)}  ${hex(address, 8)}  ${bytes.padEnd(32)} ${insn.mnemonic} ${insn.opStr}\n`;
+    if (!found && insn.mnemonic === "ret") break;
   }
   return { begin, text };
 }
