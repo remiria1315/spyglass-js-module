@@ -31,6 +31,7 @@ async function main() {
       disasm: { type: "string" },
       callers: { type: "string" },
       vtable: { type: "string" },
+      refs: { type: "string" },
       base: { type: "string" },
       out: { type: "string", default: "fov_disasm.txt" },
     },
@@ -38,7 +39,7 @@ async function main() {
   if (positionals.length < 1) {
     console.error(
       "usage: node find_fov_patterns.js exe [--top N] [--memory] [--float V]... [--string S]... " +
-        "[--max-size N] [--min-floats N] [--disasm RVA] [--callers RVA] [--vtable RVA [--base HEX]] [--out FILE]",
+        "[--max-size N] [--min-floats N] [--disasm RVA] [--callers RVA] [--vtable RVA [--base HEX]] [--refs RVA] [--out FILE]",
     );
     process.exit(2);
   }
@@ -117,12 +118,36 @@ async function main() {
           }
         }
         console.log(`slot ${(i - start) / 8} at rva 0x${hex(i)}, table starts at rva 0x${hex(start)}, class ${name}`);
+        for (let at = start, slot = 0; at < i + 8 * 32 && pointsIntoCode(at); at += 8, slot++) {
+          console.log(`  slot ${slot}: rva 0x${hex(Number(image.readBigUInt64LE(at) - base))}`);
+        }
         found++;
       }
     }
     if (found === 0) {
       die(`no pointer to 0x${hex(Number(wanted))} in the data sections; pass --base with the base that dump_client.js printed`);
     }
+    return;
+  }
+
+  if (values.refs !== undefined) {
+    const wanted = Number(values.refs);
+    let found = 0;
+    for (const section of pe.sections) {
+      if (!(section.Characteristics & EXECUTE_FLAG)) continue;
+      const last = Math.min(section.VirtualAddress + section.Misc_VirtualSize, image.length) - 7;
+      for (let i = section.VirtualAddress; i < last; i++) {
+        if ((image[i] & 0xf8) !== 0x48 || image[i + 1] !== 0x8d || (image[i + 2] & 0xc7) !== 0x05) continue;
+        if (i + 7 + image.readInt32LE(i + 3) !== wanted) continue;
+        const owner = functions.find(([begin, end]) => begin <= i && i < end);
+        const place = owner
+          ? `in function 0x${hex(owner[0])}, size 0x${hex(owner[1] - owner[0])}, at +0x${hex(i - owner[0])}`
+          : "outside the exception table";
+        console.log(`lea at rva 0x${hex(i)} ${place}`);
+        found++;
+      }
+    }
+    if (found === 0) die(`no lea of rva 0x${hex(wanted)}`);
     return;
   }
 
