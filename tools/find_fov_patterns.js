@@ -29,13 +29,14 @@ async function main() {
       "max-size": { type: "string", default: "0x300" },
       "min-floats": { type: "string", default: "2" },
       disasm: { type: "string" },
+      callers: { type: "string" },
       out: { type: "string", default: "fov_disasm.txt" },
     },
   });
   if (positionals.length < 1) {
     console.error(
       "usage: node find_fov_patterns.js exe [--top N] [--memory] [--float V]... [--string S]... " +
-        "[--max-size N] [--min-floats N] [--disasm RVA] [--out FILE]",
+        "[--max-size N] [--min-floats N] [--disasm RVA] [--callers RVA] [--out FILE]",
     );
     process.exit(2);
   }
@@ -61,6 +62,26 @@ async function main() {
     if (!dumped) die(`rva 0x${hex(rva)} is not inside a function of the exception table`);
     fs.writeFileSync(values.out, dumped.text);
     console.log(`wrote the disassembly of 0x${hex(dumped.begin)} to ${values.out}`);
+    return;
+  }
+
+  if (values.callers !== undefined) {
+    const callee = Number(values.callers);
+    let found = 0;
+    for (const section of pe.sections) {
+      if (!(section.Characteristics & EXECUTE_FLAG)) continue;
+      const last = Math.min(section.VirtualAddress + section.Misc_VirtualSize, image.length) - 5;
+      for (let i = section.VirtualAddress; i < last; i++) {
+        if ((image[i] !== 0xe8 && image[i] !== 0xe9) || i + 5 + image.readInt32LE(i + 1) !== callee) continue;
+        const owner = functions.find(([begin, end]) => begin <= i && i < end);
+        const place = owner
+          ? `in function 0x${hex(owner[0])}, size 0x${hex(owner[1] - owner[0])}, at +0x${hex(i - owner[0])}`
+          : "outside the exception table";
+        console.log(`${image[i] === 0xe8 ? "call" : "jmp"} at rva 0x${hex(i)} ${place}`);
+        found++;
+      }
+    }
+    if (found === 0) die(`no direct call or jmp to rva 0x${hex(callee)}; it may be reached through a vtable`);
     return;
   }
 
