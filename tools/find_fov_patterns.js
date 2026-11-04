@@ -82,6 +82,7 @@ async function main() {
     }
   }
 
+  const floatsByBits = new Map(floats.map((f) => [Buffer.from(Float32Array.of(f).buffer).readUInt32LE(0), f]));
   const byFunction = new Map();
   for (const section of pe.sections) {
     if (!(section.Characteristics & EXECUTE_FLAG)) continue;
@@ -89,20 +90,27 @@ async function main() {
     for (let i = section.VirtualAddress; i < last; i++) {
       let j = i;
       let isFloat = false;
-      if (image[j] === 0xf3) {
-        j++;
-        if ((image[j] & 0xf0) === 0x40) j++;
-        if (image[j] !== 0x0f || !FLOAT_OPCODES.has(image[j + 1])) continue;
-        isFloat = true;
-        j += 2;
-      } else if ((image[j] & 0xf8) === 0x48 && image[j + 1] === 0x8d) {
-        j += 2;
+      let target = -1;
+      let immediate;
+      if (image[j] >= 0xb8 && image[j] <= 0xbf) {
+        immediate = floatsByBits.get(image.readUInt32LE(j + 1));
+        if (immediate === undefined) continue;
       } else {
-        continue;
+        if (image[j] === 0xf3) {
+          j++;
+          if ((image[j] & 0xf0) === 0x40) j++;
+          if (image[j] !== 0x0f || !FLOAT_OPCODES.has(image[j + 1])) continue;
+          isFloat = true;
+          j += 2;
+        } else if ((image[j] & 0xf8) === 0x48 && image[j + 1] === 0x8d) {
+          j += 2;
+        } else {
+          continue;
+        }
+        if ((image[j] & 0xc7) !== 0x05) continue;
+        target = j + 5 + image.readInt32LE(j + 1);
+        if (target < 0 || target + 4 > image.length) continue;
       }
-      if ((image[j] & 0xc7) !== 0x05) continue;
-      const target = j + 5 + image.readInt32LE(j + 1);
-      if (target < 0 || target + 4 > image.length) continue;
 
       let low = 0;
       let high = functions.length - 1;
@@ -116,7 +124,7 @@ async function main() {
       if (owner === null || owner[1] - owner[0] > maxSize) continue;
 
       const value = isFloat ? image.readFloatLE(target) : 0;
-      const wanted = isFloat ? floats.find((f) => Math.abs(f - value) <= Math.abs(f) * 1e-6) : undefined;
+      const wanted = isFloat ? floats.find((f) => Math.abs(f - value) <= Math.abs(f) * 1e-6) : immediate;
       if (wanted === undefined && !strings.has(target)) continue;
       if (!byFunction.has(owner[0])) {
         byFunction.set(owner[0], { begin: owner[0], end: owner[1], floats: new Set(), strings: new Set() });
