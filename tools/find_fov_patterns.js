@@ -1,0 +1,162 @@
+const fs = require("fs");
+const { parseArgs } = require("util");
+const { Capstone, Const, loadCapstone } = require("capstone-wasm");
+const {
+  EXECUTE_FLAG,
+  parsePE,
+  getMemoryMappedImage,
+  tokensOf,
+  countMatches,
+  cppString,
+  hex,
+  die,
+  loadFunctions,
+  disassemblyOf,
+} = require("./pe");
+
+const DEFAULT_FLOATS = [70, 110, 30, 0.017453292, 1.1];
+const DEFAULT_STRINGS = ["field_of_view", "fieldofview", "fov"];
+const FLOAT_OPCODES = new Set([0x10, 0x58, 0x59, 0x5c, 0x5d, 0x5e, 0x5f]);
+
+async function main() {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: {
+      top: { type: "string", default: "10" },
+      memory: { type: "boolean", default: false },
+      float: { type: "string", multiple: true },
+      string: { type: "string", multiple: true },
+      "max-size": { type: "string", default: "0x300" },
+      "min-floats": { type: "string", default: "2" },
+      disasm: { type: "string" },
+      out: { type: "string", default: "fov_disasm.txt" },
+    },
+  });
+  if (positionals.length < 1) {
+    console.error(
+      "usage: node find_fov_patterns.js exe [--top N] [--memory] [--float V]... [--string S]... " +
+        "[--max-size N] [--min-floats N] [--disasm RVA] [--out FILE]",
+    );
+    process.exit(2);
+  }
+  const floats = (values.float ?? DEFAULT_FLOATS).map(Number);
+  const needles = values.string ?? DEFAULT_STRINGS;
+  const maxSize = Number(values["max-size"]);
+  const minFloats = parseInt(values["min-floats"], 10);
+  const top = parseInt(values.top, 10);
+
+  const data = fs.readFileSync(positionals[0]);
+  const pe = parsePE(data);
+  const image = values.memory ? data : getMemoryMappedImage(data, pe);
+  const { functions: unsorted } = loadFunctions(image, pe);
+  const functions = unsorted.slice().sort((a, b) => a[0] - b[0]);
+
+  await loadCapstone();
+  const md = new Capstone(Const.CS_ARCH_X86, Const.CS_MODE_64);
+  const disasm = (begin, end) => md.disasm(image.subarray(begin, end), { address: begin });
+
+  if (values.disasm !== undefined) {
+    const rva = Number(values.disasm);
+    const dumped = disassemblyOf(disasm, functions, rva);
+    if (!dumped) die(`rva 0x${hex(rva)} is not inside a function of the exception table`);
+    fs.writeFileSync(values.out, dumped.text);
+    console.log(`wrote the disassembly of 0x${hex(dumped.begin)} to ${values.out}`);
+    return;
+  }
+
+  const strings = new Map();
+  for (const needle of needles) {
+    for (const variant of [needle, needle.toUpperCase()]) {
+      const literal = Buffer.from(variant, "latin1");
+      let at = image.indexOf(literal);
+      while (at !== -1) {
+        let start = at;
+        while (start > 0 && image[start - 1] >= 0x20 && image[start - 1] < 0x7f) start--;
+        let end = at;
+        while (end < image.length && image[end] >= 0x20 && image[end] < 0x7f) end++;
+        if (image[end] === 0 && end - start <= 96 && !strings.has(start)) {
+          strings.set(start, image.toString("latin1", start, end));
+        }
+        at = image.indexOf(literal, at + 1);
+      }
+    }
+  }
+
+  const byFunction = new Map();
+  for (const section of pe.sections) {
+    if (!(section.Characteristics & EXECUTE_FLAG)) continue;
+    const last = Math.min(section.VirtualAddress + section.Misc_VirtualSize, image.length) - 9;
+    for (let i = section.VirtualAddress; i < last; i++) {
+      let j = i;
+      let isFloat = false;
+      if (image[j] === 0xf3) {
+        j++;
+        if ((image[j] & 0xf0) === 0x40) j++;
+        if (image[j] !== 0x0f || !FLOAT_OPCODES.has(image[j + 1])) continue;
+        isFloat = true;
+        j += 2;
+      } else if ((image[j] & 0xf8) === 0x48 && image[j + 1] === 0x8d) {
+        j += 2;
+      } else {
+        continue;
+      }
+      if ((image[j] & 0xc7) !== 0x05) continue;
+      const target = j + 5 + image.readInt32LE(j + 1);
+      if (target < 0 || target + 4 > image.length) continue;
+
+      let low = 0;
+      let high = functions.length - 1;
+      let owner = null;
+      while (low <= high && owner === null) {
+        const mid = (low + high) >> 1;
+        if (i < functions[mid][0]) high = mid - 1;
+        else if (i >= functions[mid][1]) low = mid + 1;
+        else owner = functions[mid];
+      }
+      if (owner === null || owner[1] - owner[0] > maxSize) continue;
+
+      const value = isFloat ? image.readFloatLE(target) : 0;
+      const wanted = isFloat ? floats.find((f) => Math.abs(f - value) <= Math.abs(f) * 1e-6) : undefined;
+      if (wanted === undefined && !strings.has(target)) continue;
+      if (!byFunction.has(owner[0])) {
+        byFunction.set(owner[0], { begin: owner[0], end: owner[1], floats: new Set(), strings: new Set() });
+      }
+      const found = byFunction.get(owner[0]);
+      if (wanted !== undefined) found.floats.add(wanted);
+      else found.strings.add(strings.get(target));
+    }
+  }
+
+  const ranked = [...byFunction.values()]
+    .filter((f) => f.floats.size >= minFloats || f.strings.size > 0)
+    .sort(
+      (a, b) =>
+        b.strings.size * 4 + b.floats.size - (a.strings.size * 4 + a.floats.size) || a.end - a.begin - (b.end - b.begin),
+    );
+
+  console.log(`strings containing ${needles.join(", ")}: ${strings.size}`);
+  console.log(`functions up to 0x${hex(maxSize)} bytes with a match: ${ranked.length}\n`);
+  if (ranked.length === 0) {
+    die("nothing matched; widen --max-size, lower --min-floats or pass --float and --string values");
+  }
+
+  let shown = 0;
+  for (const f of ranked.slice(0, top)) {
+    let tokens = [];
+    for (const insn of disasm(f.begin, f.end)) {
+      tokens = tokens.concat(tokensOf(insn));
+      if (tokens.length >= 32 && countMatches(image, tokens, 0, image.length) === 1) break;
+    }
+    const unique = countMatches(image, tokens, 0, image.length) === 1;
+    console.log(`candidate ${++shown}: rva 0x${hex(f.begin)}, size 0x${hex(f.end - f.begin)}`);
+    console.log(`  float constants: ${[...f.floats].join(", ") || "none"}`);
+    if (f.strings.size > 0) console.log(`  strings: ${[...f.strings].join(", ")}`);
+    console.log(unique ? cppString("fov", tokens) : "  no unique pattern for the start of this function");
+    console.log();
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

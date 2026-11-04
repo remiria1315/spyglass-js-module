@@ -5,7 +5,8 @@
   "type": "commonjs",
   "scripts": {
     "dump": "node dump.js",
-    "find-send": "node find_send.js"
+    "find-send": "node find_send.js",
+    "find-fov": "node find_fov_patterns.js"
   },
   "dependencies": {
     "capstone-wasm": "^1.0.3",
