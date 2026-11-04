@@ -28,7 +28,7 @@ async function main() {
       string: { type: "string", multiple: true },
       "max-size": { type: "string", default: "0x300" },
       "min-floats": { type: "string", default: "2" },
-      disasm: { type: "string" },
+      disasm: { type: "string", multiple: true },
       callers: { type: "string" },
       vtable: { type: "string" },
       refs: { type: "string" },
@@ -39,7 +39,7 @@ async function main() {
   if (positionals.length < 1) {
     console.error(
       "usage: node find_fov_patterns.js exe [--top N] [--memory] [--float V]... [--string S]... " +
-        "[--max-size N] [--min-floats N] [--disasm RVA] [--callers RVA] [--vtable RVA [--base HEX]] [--refs RVA] [--out FILE]",
+        "[--max-size N] [--min-floats N] [--disasm RVA]... [--callers RVA] [--vtable RVA [--base HEX]] [--refs RVA] [--out FILE]",
     );
     process.exit(2);
   }
@@ -60,11 +60,15 @@ async function main() {
   const disasm = (begin, end) => md.disasm(image.subarray(begin, end), { address: begin });
 
   if (values.disasm !== undefined) {
-    const rva = Number(values.disasm);
-    const dumped = disassemblyOf(disasm, functions, rva);
-    if (!dumped) die(`rva 0x${hex(rva)} is not inside a function of the exception table`);
-    fs.writeFileSync(values.out, dumped.text);
-    console.log(`wrote the disassembly of 0x${hex(dumped.begin)} to ${values.out}`);
+    let text = "";
+    for (const argument of values.disasm) {
+      const rva = Number(argument);
+      const dumped = disassemblyOf(disasm, functions, rva);
+      if (!dumped) die(`rva 0x${hex(rva)} is not inside a function of the exception table`);
+      text += `${dumped.text}\n`;
+    }
+    fs.writeFileSync(values.out, text);
+    console.log(`wrote the disassembly of ${values.disasm.length} function(s) to ${values.out}`);
     return;
   }
 
