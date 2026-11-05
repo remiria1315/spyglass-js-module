@@ -48,13 +48,13 @@ std::atomic<const void *> g_host{nullptr};
 std::atomic<std::chrono::steady_clock::time_point> g_host_seen{};
 
 struct CameraState {
-    std::byte before_position_[0x610];
+    std::byte before_position_[0x64c];
     float position_[3];
-    std::byte before_view_[0xf10 - 0x610 - 12];
+    std::byte before_view_[0xf10 - 0x64c - 12];
     float view_[16];
 };
 
-static_assert(offsetof(CameraState, position_) == 0x610);
+static_assert(offsetof(CameraState, position_) == 0x64c);
 static_assert(offsetof(CameraState, view_) == 0xf10);
 
 void *g_read = nullptr;
@@ -107,7 +107,7 @@ float FovHost::getFov(const float partial_tick, const bool apply_effects)
         for (std::size_t offset = 0; offset + 12 <= limit; offset += 4) {
             float p[3];
             std::memcpy(p, node.base + offset, sizeof(p));
-            if (std::abs(p[0] - want[0]) > 0.3 || std::abs(p[2] - want[2]) > 0.3 || std::abs(p[1] - want[1]) > 2.0) {
+            if (!(std::abs(p[0] - want[0]) <= 0.3 && std::abs(p[2] - want[2]) <= 0.3 && std::abs(p[1] - want[1]) <= 2.0)) {
                 continue;
             }
             matches++;
