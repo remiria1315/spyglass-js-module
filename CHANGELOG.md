@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `draw.worldToScreen` turns a world position into a screen position for a camera given as position, yaw, pitch and field
   of view. It also returns `scale`, the pixels one block spans at that point, to size marks by distance.
 - `draw.block` and `draw.box` outline a block or a box in the world, with an optional fill.
+- `draw.fov` is the field of view in degrees that the client rendered with, including the change while sprinting. It is
+  `null` on Android and until the first frame.
 - `bus`, imported from `"spyglass"`, sends messages between modules. `bus.on(topic, listener)` listens and
   `bus.emit(topic, data)` sends JSON data to the listeners of the other modules.
 - A module in a folder reads a `.env` file next to its `index.js`. The values are available as `env`, imported from

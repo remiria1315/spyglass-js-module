@@ -9,6 +9,7 @@
 #include <android/log.h>
 #endif
 
+#include "spyglass/camera.h"
 #include "spyglass/error.h"
 #include "spyglass/network.h"
 #include "spyglass/overlay/install.h"
@@ -61,6 +62,7 @@ void install()
     }
 
     attempt("packet hook", install_network_hook);
+    attempt("camera hook", install_camera_hook);
     attempt("script modules", [] {
         script::set_sender([](const script::Side side, const Direction direction, const int id,
                               const std::string_view body, const int player, const int sub_client) {

@@ -192,6 +192,11 @@ constexpr std::string_view kMouseFeed =
     "00 00 00 44 0F B7 AC 24 B8 00 00 00 44 0F B7 BC 24 B0 00 00 00 0F B6 84 "
     "24 C8 00 00 00";
 
+constexpr std::string_view kCameraFov =
+    "56 57 55 53 48 83 EC 58 0F 29 74 24 40 48 89 D6 48 89 CB 48 8B 05 ? ? ? ? "
+    "48 31 E0 48 89 44 24 38 48 8B 49 08 48 8B 01 48 8B 80 C8 05 00 00 FF 15 "
+    "? ? ? ? 48 85 C0 74 ? 48 8B 4B 08 E8 ? ? ? ?";
+
 #else
 
 #if MINECRAFT_PREVIEW ||                                                       \
