@@ -8,8 +8,18 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
+#include <Windows.h>
+
+#include "spyglass/core/output.h"
 #include "spyglass/detail.h"
 #include "spyglass/hook.h"
 #include "spyglass/signature.h"
@@ -62,7 +72,60 @@ float FovHost::getFov(const float partial_tick, const bool apply_effects)
 {
     g_host.store(this, std::memory_order_relaxed);
     g_host_seen.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-    return SPYGLASS_CALL_ORIGINAL(&FovHost::getFov, g_get_fov, this, partial_tick, apply_effects);
+    const auto fov = SPYGLASS_CALL_ORIGINAL(&FovHost::getFov, g_get_fov, this, partial_tick, apply_effects);
+
+    static unsigned calls = 0;
+    const auto trigger = output_directory() / "camera_scan";
+    if (++calls % 120 != 0 || !std::filesystem::exists(trigger)) {
+        return fov;
+    }
+    double want[3]{};
+    std::ifstream{trigger} >> want[0] >> want[1] >> want[2];
+    std::filesystem::remove(trigger);
+
+    struct Node {
+        const std::byte *base;
+        int depth;
+        std::string path;
+    };
+    std::vector<Node> nodes{{reinterpret_cast<const std::byte *>(this), 0, "host"}};
+    std::unordered_set<const void *> seen{this};
+    std::ofstream out{output_directory() / "camera_scan.txt"};
+    out << std::format("looking for {} {} {}\n", want[0], want[1], want[2]);
+
+    int matches = 0;
+    for (std::size_t i = 0; i < nodes.size() && i < 30000 && matches < 80; ++i) {
+        const auto node = nodes[i];
+        MEMORY_BASIC_INFORMATION info{};
+        if (VirtualQuery(node.base, &info, sizeof(info)) == 0 || info.State != MEM_COMMIT ||
+            (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0) {
+            continue;
+        }
+        const auto region_end = static_cast<const std::byte *>(info.BaseAddress) + info.RegionSize;
+        const auto limit = std::min<std::size_t>(0x1800, static_cast<std::size_t>(region_end - node.base));
+
+        for (std::size_t offset = 0; offset + 12 <= limit; offset += 4) {
+            float p[3];
+            std::memcpy(p, node.base + offset, sizeof(p));
+            if (std::abs(p[0] - want[0]) > 0.3 || std::abs(p[2] - want[2]) > 0.3 || std::abs(p[1] - want[1]) > 2.0) {
+                continue;
+            }
+            matches++;
+            out << std::format("{} -> +{:#x}: {:.5f} {:.5f} {:.5f}\n", node.path, offset, p[0], p[1], p[2]);
+        }
+
+        for (std::size_t offset = 0; node.depth < 4 && nodes.size() < 30000 && offset + 8 <= limit; offset += 8) {
+            std::uintptr_t value = 0;
+            std::memcpy(&value, node.base + offset, sizeof(value));
+            if (value >= 0x10000 && value < 0x00007fffffffffffULL &&
+                seen.insert(reinterpret_cast<const void *>(value)).second) {
+                nodes.push_back({reinterpret_cast<const std::byte *>(value), node.depth + 1,
+                                 std::format("{} -> +{:#x}", node.path, offset)});
+            }
+        }
+    }
+    out << std::format("{} match(es), {} objects visited\n", matches, std::min<std::size_t>(nodes.size(), 30000));
+    return fov;
 }
 
 std::optional<float> FovSource::read()
