@@ -175,7 +175,9 @@ async function main() {
         seen.get(begin).hits.add(disp);
       }
     }
-    const matches = [...seen].filter(([, f]) => f.hits.size === offsets.length);
+    const matches = [...seen]
+      .filter(([, f]) => f.hits.size === offsets.length)
+      .sort((a, b) => a[1].end - a[0] - (b[1].end - b[0]));
     for (const [begin, f] of matches.slice(0, top)) {
       console.log(`function rva 0x${hex(begin)}, size 0x${hex(f.end - begin)}`);
     }
