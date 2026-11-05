@@ -283,6 +283,7 @@ number `0xrrggbbaa`, and default to white.
 | `draw.text(x, y, text, { color, size })` | text from its top left corner. `size` is in pixels and defaults to the overlay font size. At most 4096 bytes are drawn. |
 | `draw.textSize(text, size?)` | `{ width, height }` of the text, for centring or backgrounds |
 | `draw.fov` | the vertical field of view in degrees that the client last rendered with, or `null` until it has one. Windows only |
+| `draw.camera` | `{ x, y, z, yaw, pitch, fov }` of the camera the client is rendering with, or `null` until it has one. Windows only |
 | `draw.setCamera(camera)` | sets the camera for the calls below until the end of the callback |
 | `draw.worldToScreen(point, camera?)` | `{ x, y, depth, scale }` in pixels, or `null` if the point is behind the camera |
 | `draw.block(position, { color, thickness, fill, camera })` | outlines the block that contains `position` |
@@ -299,10 +300,11 @@ throws.
 - `yaw` and `pitch` are in degrees. Yaw 0 faces +Z and yaw 90 faces -X. A positive pitch looks down.
 - `fov` is the vertical field of view in degrees, 70 if left out. The projection matches the game only when `fov`
   matches what the client renders, and the client changes it while sprinting and with some effects. `draw.fov` is the
-  value the client rendered with, so `fov: draw.fov ?? 70` follows it.
+  value the client rendered with.
 
-Spyglass reads the field of view from the client but not the position or the rotation, so a module has to supply those,
-for example from `playerAuthInputPacket`. `draw.setCamera(camera)` computes the view once, so it is cheaper than passing
+`draw.camera` is the camera the client renders with, in the same units, so `draw.setCamera(draw.camera)` lines the
+projection up with the game. Where it is `null`, a module has to supply the camera, for example from
+`playerAuthInputPacket`. `draw.setCamera(camera)` computes the view once, so it is cheaper than passing
 the camera to every call. The camera set in one callback does not carry over to the next frame.
 
 ### Size by distance

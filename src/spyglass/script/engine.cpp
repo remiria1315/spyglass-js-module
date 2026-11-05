@@ -799,6 +799,7 @@ const draw = Object.freeze({
   textSize: native.textSize,
   worldToScreen: native.worldToScreen,
   get fov() { return native.cameraFov(); },
+  get camera() { return native.cameraPose(); },
   box: native.drawBox,
   block: native.drawBlock,
 });
@@ -2374,6 +2375,7 @@ constexpr std::string_view kDeclarationsHead = R"ts(declare module "spyglass" {
     readonly width: number;
     readonly height: number;
     readonly fov: number | null;
+    readonly camera: Camera | null;
     setCamera(camera: Camera): void;
     line(x1: number, y1: number, x2: number, y2: number, options?: { color?: Color; thickness?: number }): void;
     rect(x: number, y: number, width: number, height: number, options?: { color?: Color; thickness?: number; rounding?: number; fill?: boolean }): void;
@@ -3781,6 +3783,26 @@ JSValue js_camera_fov(JSContext *ctx, JSValueConst, int, JSValueConst *)
     return fov ? JS_NewFloat64(ctx, *fov) : JS_NULL;
 }
 
+JSValue js_camera_pose(JSContext *ctx, JSValueConst, int, JSValueConst *)
+{
+    const auto pose = spyglass::camera_pose();
+    if (!pose) {
+        return JS_NULL;
+    }
+    const auto result = JS_NewObject(ctx);
+    for (const auto &[name, value] : std::array<std::pair<const char *, float>, 6>{{
+             {"x", pose->x},
+             {"y", pose->y},
+             {"z", pose->z},
+             {"yaw", pose->yaw},
+             {"pitch", pose->pitch},
+             {"fov", pose->fov},
+         }}) {
+        JS_SetPropertyStr(ctx, result, name, JS_NewFloat64(ctx, value));
+    }
+    return result;
+}
+
 JSValue js_world_to_screen(JSContext *ctx, JSValueConst, const int argc, JSValueConst *argv)
 {
     std::array<double, 3> point{};
@@ -4235,7 +4257,7 @@ std::string load(const std::string &name)
     JS_SetPropertyStr(module.ctx, native, "busEmit", JS_NewCFunction(module.ctx, js_bus_emit, "busEmit", 2));
     JS_SetPropertyStr(module.ctx, native, "renderOn", JS_NewCFunction(module.ctx, js_render_on, "renderOn", 1));
     JS_SetPropertyStr(module.ctx, native, "renderOff", JS_NewCFunction(module.ctx, js_render_off, "renderOff", 1));
-    for (const auto &[name, function] : std::array<std::pair<const char *, JSCFunction *>, 9>{{
+    for (const auto &[name, function] : std::array<std::pair<const char *, JSCFunction *>, 10>{{
              {"setCamera", js_set_camera},
              {"drawLine", js_line},
              {"drawRect", js_rect},
@@ -4245,6 +4267,7 @@ std::string load(const std::string &name)
              {"textSize", js_text_size},
              {"worldToScreen", js_world_to_screen},
              {"cameraFov", js_camera_fov},
+             {"cameraPose", js_camera_pose},
          }}) {
         JS_SetPropertyStr(module.ctx, native, name, JS_NewCFunction(module.ctx, function, name, 2));
     }
