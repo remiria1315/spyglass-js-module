@@ -197,6 +197,11 @@ constexpr std::string_view kCameraFov =
     "48 31 E0 48 89 44 24 38 48 8B 49 08 48 8B 01 48 8B 80 C8 05 00 00 FF 15 "
     "? ? ? ? 48 85 C0 74 ? 48 8B 4B 08 E8 ? ? ? ?";
 
+constexpr std::string_view kCameraFovHost =
+    "56 57 53 48 83 EC 60 44 0F 29 44 24 50 0F 29 7C 24 40 0F 29 74 24 30 44 89 "
+    "C3 0F 28 F1 48 89 CE 45 84 C0 0F 84 ? ? ? ? 48 8B 86 80 11 00 00 48 8B 88 "
+    "08 04 00 00";
+
 #else
 
 #if MINECRAFT_PREVIEW ||                                                       \
