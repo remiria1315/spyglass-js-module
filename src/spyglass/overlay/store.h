@@ -134,6 +134,9 @@ private:
     std::size_t queued_bytes_{0};
     StoreOptions options_;
 
+    std::mutex write_mutex_;
+    std::uint64_t generation_{0};
+
     std::atomic_size_t resident_budget_{StoreOptions{}.resident_blocks};
     std::atomic_uint64_t written_{0};
     std::atomic_uint64_t dropped_{0};

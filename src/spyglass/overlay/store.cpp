@@ -229,8 +229,9 @@ void sweep_captures()
 
 void Store::restart()
 {
-    const std::scoped_lock lock{mutex_, read_mutex_, queue_mutex_, fields_mutex_};
+    const std::scoped_lock lock{mutex_, read_mutex_, queue_mutex_, fields_mutex_, write_mutex_};
 
+    ++generation_;
     field_at_.clear();
     fields_offset_ = 0;
     queue_.clear();
@@ -338,14 +339,22 @@ void Store::run()
 {
     std::deque<std::pair<Entry, std::vector<std::uint8_t>>> batch;
     while (running_.load(std::memory_order_relaxed)) {
+        auto generation = std::uint64_t{0};
         {
             std::unique_lock lock{queue_mutex_};
             ready_.wait_for(lock, kIdle,
                             [this] { return !queue_.empty() || !running_.load(std::memory_order_relaxed); });
             batch.swap(queue_);
             queued_bytes_ = 0;
+            generation = generation_;
         }
         if (batch.empty()) {
+            continue;
+        }
+
+        const std::lock_guard write_lock{write_mutex_};
+        if (generation != generation_) {
+            batch.clear();
             continue;
         }
 
