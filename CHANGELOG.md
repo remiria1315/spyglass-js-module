@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A module in a folder reads a `.env` file next to its `index.js`. The values are available as `env`, imported from
   `"spyglass"`.
 
+### Fixed
+
+- Pressing `Restart` while packets were arriving could crash the client. The capture files are no longer reopened while
+  they are being written.
+- The capture writer is stopped before the client exits. It could still be writing as the capture was freed.
+
 ## [0.5.6] - 2026-10-29 
 
 ### Added
