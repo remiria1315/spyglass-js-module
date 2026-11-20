@@ -188,7 +188,7 @@ Store::~Store()
 {
     running_.store(false, std::memory_order_relaxed);
     ready_.notify_all();
-    thread_.detach();
+    thread_.join();
 
     writer_.close();
     index_writer_.close();
