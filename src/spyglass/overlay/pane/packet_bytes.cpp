@@ -1,4 +1,5 @@
 #include "spyglass/overlay/pane/packet_bytes.h"
+#include "spyglass/overlay/i18n.h"
 
 #include <algorithm>
 #include <cmath>
@@ -207,7 +208,7 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
     }
 
     const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    bool open_actions = ImGui::Button("Actions");
+    bool open_actions = ImGui::Button(tr_label("Actions"));
     bool open_text = false;
 
     ImGui::SameLine();
@@ -215,19 +216,19 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
         ImGui::SetKeyboardFocusHere();
     }
     ImGui::SetNextItemWidth(180.0F);
-    const bool entered = ImGui::InputTextWithHint("##find", "find hex or text", view.query, sizeof(view.query),
+    const bool entered = ImGui::InputTextWithHint("##find", tr("find hex or text"), view.query, sizeof(view.query),
                                                   ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemEdited()) {
         view.query_dirty = true;
     }
 
     ImGui::SameLine();
-    if (ImGui::RadioButton("hex", view.query_hex)) {
+    if (ImGui::RadioButton(tr_label("hex"), view.query_hex)) {
         view.query_hex = true;
         view.query_dirty = true;
     }
     ImGui::SameLine();
-    if (ImGui::RadioButton("text", !view.query_hex)) {
+    if (ImGui::RadioButton(tr_label("text"), !view.query_hex)) {
         view.query_hex = false;
         view.query_dirty = true;
     }
@@ -247,11 +248,11 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
 
     if (!view.matches.empty()) {
         ImGui::SameLine();
-        ImGui::TextColored(kMuted, "%d/%zu", view.match + 1, view.matches.size());
+        ImGui::TextColored(palette().muted, "%d/%zu", view.match + 1, view.matches.size());
     }
     if (view.hovering) {
         ImGui::SameLine();
-        ImGui::TextColored(kMuted, "| 0x%zX", view.hover);
+        ImGui::TextColored(palette().muted, "| 0x%zX", view.hover);
     }
 
     if (view.query_dirty) {
@@ -315,10 +316,11 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
     layout.width = layout.ascii + (static_cast<float>(kBytesPerRow) * layout.glyph) + view.digit;
 
     const auto text_colour = ImGui::GetColorU32(ImGuiCol_Text);
-    const auto muted = ImGui::GetColorU32(kMuted);
-    const auto unread = ImGui::GetColorU32(kBadRow);
-    const auto hit_line = ImGui::GetColorU32(kFindHit);
-    const auto hit_fill = ImGui::GetColorU32(ImVec4{kFindHit.x, kFindHit.y, kFindHit.z, 0.35F});
+    const auto muted = ImGui::GetColorU32(palette().muted);
+    const auto unread = ImGui::GetColorU32(palette().bad_row);
+    const auto hit_line = ImGui::GetColorU32(palette().find_hit);
+    const auto hit_fill =
+        ImGui::GetColorU32(ImVec4{palette().find_hit.x, palette().find_hit.y, palette().find_hit.z, 0.35F});
     const auto selection = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
 
     auto first = std::min(view.anchor, view.cursor);
@@ -462,17 +464,17 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
         const auto range = selected_bytes(view, body);
         const auto from = body.empty() ? std::size_t{0} : static_cast<std::size_t>(range.data() - body.data());
 
-        if (ImGui::BeginMenu("Copy", !range.empty())) {
-            if (ImGui::MenuItem("Hex dump")) {
+        if (ImGui::BeginMenu(tr_label("Copy"), !range.empty())) {
+            if (ImGui::MenuItem(tr_label("Hex dump"))) {
                 ImGui::SetClipboardText(format_bytes(range, from, BytesFormat::HexDump).c_str());
             }
-            if (ImGui::MenuItem("Hex stream")) {
+            if (ImGui::MenuItem(tr_label("Hex stream"))) {
                 ImGui::SetClipboardText(format_bytes(range, from, BytesFormat::HexStream).c_str());
             }
-            if (ImGui::MenuItem("Printable text")) {
+            if (ImGui::MenuItem(tr_label("Printable text"))) {
                 ImGui::SetClipboardText(format_bytes(range, from, BytesFormat::Text).c_str());
             }
-            if (ImGui::MenuItem("C array")) {
+            if (ImGui::MenuItem(tr_label("C array"))) {
                 ImGui::SetClipboardText(format_bytes(range, from, BytesFormat::CArray).c_str());
             }
             if (ImGui::MenuItem("Base64")) {
@@ -480,7 +482,7 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
             }
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Show text...", nullptr, false, !range.empty())) {
+        if (ImGui::MenuItem(tr_label("Show text..."), nullptr, false, !range.empty())) {
             view.text = format_bytes(range, from, BytesFormat::HexDump);
             if (view.text.size() > 64 * 1024) {
                 view.text.resize(64 * 1024);
@@ -489,15 +491,15 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
         }
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Select all", nullptr, false, !body.empty())) {
+        if (ImGui::MenuItem(tr_label("Select all"), nullptr, false, !body.empty())) {
             view.anchor = 0;
             view.cursor = body.size() - 1;
             view.selected = true;
         }
-        if (ImGui::MenuItem("Select to here", nullptr, false, view.selected)) {
+        if (ImGui::MenuItem(tr_label("Select to here"), nullptr, false, view.selected)) {
             view.cursor = view.target;
         }
-        if (ImGui::MenuItem("Clear selection", nullptr, false, view.selected)) {
+        if (ImGui::MenuItem(tr_label("Clear selection"), nullptr, false, view.selected)) {
             view.selected = false;
         }
         ImGui::EndPopup();
@@ -507,7 +509,7 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
     ImGui::EndChild();
 
     if (inspecting) {
-        ImGui::TextColored(kMuted, "%s", inspect(body.subspan(first, last - first + 1)).c_str());
+        ImGui::TextColored(palette().muted, "%s", inspect(body.subspan(first, last - first + 1)).c_str());
     }
 
     if (open_text) {
@@ -516,9 +518,8 @@ void draw_packet_bytes(const Details *const details, const std::uint64_t number,
     ImGui::SetNextWindowSize(ImVec2{640.0F, 480.0F}, ImGuiCond_FirstUseEver);
     if (ImGui::BeginPopupModal("bytes_text", nullptr, ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::InputTextMultiline("##text", view.text.data(), view.text.size() + 1,
-                                  ImVec2{-1.0F, -ImGui::GetFrameHeightWithSpacing()},
-                                  ImGuiInputTextFlags_ReadOnly);
-        if (ImGui::Button("Close")) {
+                                  ImVec2{-1.0F, -ImGui::GetFrameHeightWithSpacing()}, ImGuiInputTextFlags_ReadOnly);
+        if (ImGui::Button(tr_label("Close"))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

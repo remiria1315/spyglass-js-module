@@ -12,6 +12,7 @@
 #include "spyglass/overlay/pane/modules_window.h"
 #include "spyglass/overlay/pane/packet_bytes.h"
 #include "spyglass/overlay/pane/packet_list.h"
+#include "spyglass/overlay/settings.h"
 
 namespace spyglass {
 
@@ -35,7 +36,9 @@ public:
     [[nodiscard]] bool visible() const noexcept { return visible_; }
     void set_interactive(const bool interactive) noexcept { interactive_ = interactive; }
 
-private:
+  private:
+    View();
+
     Capture capture_;
     Filter filter_;
     ViewOptions options_;
@@ -50,6 +53,9 @@ private:
     ModulesWindow modules_window_;
     BytesView bytes_view_;
     std::vector<DetachedPacket> detached_;
+    Settings saved_;
+    bool unsaved_{false};
+    double changed_at_{0.0};
 };
 
 }  // namespace spyglass

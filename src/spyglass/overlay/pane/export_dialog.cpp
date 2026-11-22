@@ -15,6 +15,7 @@
 
 #include "spyglass/core/output.h"
 #include "spyglass/overlay/capture.h"
+#include "spyglass/overlay/i18n.h"
 #include "spyglass/overlay/options.h"
 #include "spyglass/overlay/pane/packet_bytes.h"
 #include "spyglass/overlay/pane/packet_list.h"
@@ -97,27 +98,27 @@ bool has_extension(const std::string &name, const std::string_view extension)
 std::string name_problem(const std::string_view name)
 {
     if (name.empty()) {
-        return "the file needs a name";
+        return tr("the file needs a name");
     }
     if (name == "." || name == "..") {
-        return "that is not a file name";
+        return tr("that is not a file name");
     }
     for (const auto character : name) {
         if (static_cast<unsigned char>(character) < 0x20) {
-            return "the file name contains a control character";
+            return tr("the file name contains a control character");
         }
         if (character == '/') {
-            return "the file name cannot contain a path separator";
+            return tr("the file name cannot contain a path separator");
         }
 #ifdef _WIN32
         if (character == '\\' || std::string_view{"<>:\"|?*"}.find(character) != std::string_view::npos) {
-            return "the file name cannot contain \\ / : * ? \" < > or |";
+            return tr("the file name cannot contain \\ / : * ? \" < > or |");
         }
 #endif
     }
 #ifdef _WIN32
     if (name.back() == ' ' || name.back() == '.') {
-        return "the file name cannot end with a space or a dot";
+        return tr("the file name cannot end with a space or a dot");
     }
     constexpr std::array<std::string_view, 22> reserved{"CON",  "PRN",  "AUX",  "NUL",  "COM1", "COM2", "COM3", "COM4",
                                                         "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3",
@@ -157,7 +158,7 @@ std::string size_text(const double bytes)
 void count_cell(const bool chosen, const std::uint64_t count, const bool partial)
 {
     ImGui::TableNextColumn();
-    ImGui::TextColored(chosen ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : kMuted, partial ? "%llu..." : "%llu",
+    ImGui::TextColored(chosen ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : palette().muted, partial ? "%llu..." : "%llu",
                        static_cast<unsigned long long>(count));
 }
 
@@ -203,10 +204,10 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
         }
     }
 
-    const auto *const heading = dialog.command == ExportCommand::Packets ? "Spyglass: export packets"
+    const auto *const heading = dialog.command == ExportCommand::Packets ? tr("Spyglass: export packets")
                                 : dialog.command == ExportCommand::SelectedBytes
-                                    ? "Spyglass: export selected packet bytes"
-                                    : "Spyglass: export session summary";
+                                    ? tr("Spyglass: export selected packet bytes")
+                                    : tr("Spyglass: export session summary");
     char title[128];
     std::snprintf(title, sizeof(title), "%s###spyglass_export", heading);
 
@@ -219,10 +220,10 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
     if (dialog.job.running) {
         const auto done = dialog.job.next > 1 ? dialog.job.next - 1 : 0;
         const auto share = dialog.job.last == 0 ? 0.0F : static_cast<float>(done) / static_cast<float>(dialog.job.last);
-        ImGui::Text("Exporting %llu of %llu packets", static_cast<unsigned long long>(dialog.job.written),
+        ImGui::Text(tr("Exporting %llu of %llu packets"), static_cast<unsigned long long>(dialog.job.written),
                     static_cast<unsigned long long>(dialog.job.last));
         ImGui::ProgressBar(std::clamp(share, 0.0F, 1.0F), ImVec2{-1.0F, 0.0F});
-        if (ImGui::Button("Cancel")) {
+        if (ImGui::Button(tr_label("Cancel"))) {
             cancel_export(dialog.job);
         }
         ImGui::End();
@@ -231,11 +232,11 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
 
     if (!dialog.job.message.empty()) {
         ImGui::TextUnformatted(dialog.job.message.c_str());
-        if (ImGui::Button("Copy path")) {
+        if (ImGui::Button(tr_label("Copy path"))) {
             ImGui::SetClipboardText(path_text(dialog.job.path).c_str());
         }
         ImGui::SameLine();
-        if (ImGui::Button("Close")) {
+        if (ImGui::Button(tr_label("Close"))) {
             dialog.job.message.clear();
             options.export_dialog = false;
         }
@@ -299,7 +300,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
 
     std::filesystem::path pending;
 
-    ImGui::TextUnformatted("Look in:");
+    ImGui::TextUnformatted(tr("Look in:"));
     ImGui::SameLine(kLabelWidth);
     ImGui::SetNextItemWidth(-1.0F);
     if (ImGui::InputText("##look_in", dialog.look_in, sizeof(dialog.look_in), ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -328,7 +329,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
 #else
     if (const auto *const home = std::getenv("HOME"); home != nullptr && *home != '\0') {
         ImGui::SameLine();
-        if (ImGui::Button("Home")) {
+        if (ImGui::Button(tr_label("Home"))) {
             pending = path_of(home);
         }
     }
@@ -339,12 +340,12 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
 #endif
     ImGui::SameLine();
     ImGui::BeginDisabled(dialog.directory.parent_path() == dialog.directory);
-    if (ImGui::Button("Up")) {
+    if (ImGui::Button(tr_label("Up"))) {
         pending = dialog.directory.parent_path();
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Refresh")) {
+    if (ImGui::Button(tr_label("Refresh"))) {
         dialog.relist = true;
     }
 
@@ -372,10 +373,10 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
     ImGui::EndChild();
 
     if (!dialog.listing_error.empty()) {
-        ImGui::TextColored(kBadPacket, "%s", dialog.listing_error.c_str());
+        ImGui::TextColored(palette().bad_packet, "%s", dialog.listing_error.c_str());
     }
     else if (dialog.hidden != 0) {
-        ImGui::TextColored(kMuted, "%zu hidden by the type filter", dialog.hidden);
+        ImGui::TextColored(palette().muted, tr("%zu hidden by the type filter"), dialog.hidden);
     }
 
     if (!pending.empty()) {
@@ -384,17 +385,18 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
         dialog.status.clear();
     }
 
-    ImGui::TextUnformatted("File name:");
+    ImGui::TextUnformatted(tr("File name:"));
     ImGui::SameLine(kLabelWidth);
     ImGui::SetNextItemWidth(-1.0F);
     auto save = ImGui::InputText("##name", dialog.name, sizeof(dialog.name), ImGuiInputTextFlags_EnterReturnsTrue);
 
-    ImGui::TextUnformatted("Export as:");
+    ImGui::TextUnformatted(tr("Export as:"));
     ImGui::SameLine(kLabelWidth);
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::BeginCombo("##type", types[static_cast<std::size_t>(dialog.type)].first)) {
+    if (ImGui::BeginCombo("##type", tr(types[static_cast<std::size_t>(dialog.type)].first))) {
         for (auto at = 0; at < static_cast<int>(types.size()); ++at) {
-            if (ImGui::Selectable(types[static_cast<std::size_t>(at)].first, at == dialog.type) && at != dialog.type) {
+            if (ImGui::Selectable(tr(types[static_cast<std::size_t>(at)].first), at == dialog.type) &&
+                at != dialog.type) {
                 dialog.type = at;
                 dialog.relist = true;
                 const auto stem = path_text(path_of(dialog.name).stem());
@@ -412,12 +414,12 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
     if (dialog.command == ExportCommand::Packets) {
         dialog.options.range = parse_range(dialog.range);
 
-        ImGui::SeparatorText("Packet Range");
-        if (ImGui::RadioButton("Captured", dialog.options.scope == PacketScope::Captured)) {
+        ImGui::SeparatorText(tr("Packet Range"));
+        if (ImGui::RadioButton(tr_label("Captured"), dialog.options.scope == PacketScope::Captured)) {
             dialog.options.scope = PacketScope::Captured;
         }
         ImGui::SameLine();
-        if (ImGui::RadioButton("Displayed", dialog.options.scope == PacketScope::Displayed)) {
+        if (ImGui::RadioButton(tr_label("Displayed"), dialog.options.scope == PacketScope::Displayed)) {
             dialog.options.scope = PacketScope::Displayed;
         }
 
@@ -470,14 +472,14 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
         const auto all_displayed = static_cast<std::uint64_t>(list.displayed);
 
         if (ImGui::BeginTable("range", 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
-            ImGui::TableSetupColumn("Range", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Captured");
-            ImGui::TableSetupColumn("Displayed");
+            ImGui::TableSetupColumn(tr_label("Range"), ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn(tr_label("Captured"));
+            ImGui::TableSetupColumn(tr_label("Displayed"));
             ImGui::TableHeadersRow();
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            if (ImGui::RadioButton("All packets", dialog.options.selection == PacketSelection::All)) {
+            if (ImGui::RadioButton(tr_label("All packets"), dialog.options.selection == PacketSelection::All)) {
                 dialog.options.selection = PacketSelection::All;
             }
             count_cell(captured_scope, newest, false);
@@ -486,7 +488,8 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::BeginDisabled(!selected_ok);
-            if (ImGui::RadioButton("Selected packet", dialog.options.selection == PacketSelection::Selected)) {
+            if (ImGui::RadioButton(tr_label("Selected packet"),
+                                   dialog.options.selection == PacketSelection::Selected)) {
                 dialog.options.selection = PacketSelection::Selected;
             }
             ImGui::EndDisabled();
@@ -496,7 +499,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::BeginDisabled(list.marks.empty());
-            if (ImGui::RadioButton("Marked packets", dialog.options.selection == PacketSelection::Marked)) {
+            if (ImGui::RadioButton(tr_label("Marked packets"), dialog.options.selection == PacketSelection::Marked)) {
                 dialog.options.selection = PacketSelection::Marked;
             }
             ImGui::EndDisabled();
@@ -505,7 +508,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
 
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            if (ImGui::RadioButton("Range:", dialog.options.selection == PacketSelection::Range)) {
+            if (ImGui::RadioButton(tr_label("Range:"), dialog.options.selection == PacketSelection::Range)) {
                 dialog.options.selection = PacketSelection::Range;
             }
             ImGui::SameLine();
@@ -520,7 +523,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
         }
 
         if (!dialog.options.range.error.empty()) {
-            ImGui::TextColored(kBadPacket, "%s", dialog.options.range.error.c_str());
+            ImGui::TextColored(palette().bad_packet, "%s", dialog.options.range.error.c_str());
         }
 
         switch (dialog.options.selection) {
@@ -538,17 +541,17 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
             break;
         }
 
-        ImGui::SeparatorText("Packet Format");
+        ImGui::SeparatorText(tr("Packet Format"));
         const auto csv = dialog.options.format == ExportFormat::Csv;
         const auto json = dialog.options.format == ExportFormat::Json;
 
         ImGui::BeginDisabled(csv || json);
-        ImGui::Checkbox("Packet summary line", &dialog.options.summary);
+        ImGui::Checkbox(tr_label("Packet summary line"), &dialog.options.summary);
         ImGui::EndDisabled();
         ImGui::BeginDisabled(csv);
-        ImGui::Checkbox("Packet details", &dialog.options.details);
+        ImGui::Checkbox(tr_label("Packet details"), &dialog.options.details);
         ImGui::SameLine();
-        ImGui::Checkbox("Packet bytes", &dialog.options.bytes);
+        ImGui::Checkbox(tr_label("Packet bytes"), &dialog.options.bytes);
         ImGui::EndDisabled();
 
         const auto average =
@@ -565,7 +568,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
         const auto available = ec ? 0.0 : static_cast<double>(room.available);
         const auto estimate = static_cast<double>(chosen_count) * per_packet;
         const auto tight = available > 0.0 && estimate > available;
-        ImGui::TextColored(tight ? kBadPacket : kMuted, "%llu packets, about %s, %s free",
+        ImGui::TextColored(tight ? palette().bad_packet : palette().muted, tr("%llu packets, about %s, %s free"),
                            static_cast<unsigned long long>(chosen_count), size_text(estimate).c_str(),
                            size_text(available).c_str());
     }
@@ -577,14 +580,14 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
         }
         else if (dialog.options.format == ExportFormat::Text && !dialog.options.summary && !dialog.options.details &&
                  !dialog.options.bytes) {
-            blocked = "nothing to write";
+            blocked = tr("nothing to write");
         }
         else if (chosen_count == 0) {
-            blocked = "no packets selected";
+            blocked = tr("no packets selected");
         }
     }
     else if (dialog.command == ExportCommand::SelectedBytes && capture.selected() == 0) {
-        blocked = "no packet selected";
+        blocked = tr("no packet selected");
     }
 
     const auto commit = [&](const std::filesystem::path &target) {
@@ -611,20 +614,20 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
 
     ImGui::Separator();
     if (!dialog.status.empty()) {
-        ImGui::TextColored(kBadPacket, "%s", dialog.status.c_str());
+        ImGui::TextColored(palette().bad_packet, "%s", dialog.status.c_str());
     }
     else if (!blocked.empty()) {
-        ImGui::TextColored(kMuted, "%s", blocked.c_str());
+        ImGui::TextColored(palette().muted, "%s", blocked.c_str());
     }
 
     if (dialog.confirming) {
-        ImGui::Text("%s already exists.", path_text(dialog.chosen.filename()).c_str());
-        if (ImGui::Button("Replace")) {
+        ImGui::Text(tr("%s already exists."), path_text(dialog.chosen.filename()).c_str());
+        if (ImGui::Button(tr_label("Replace"))) {
             dialog.confirming = false;
             commit(dialog.chosen);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Keep")) {
+        if (ImGui::Button(tr_label("Keep"))) {
             dialog.confirming = false;
         }
         ImGui::End();
@@ -632,10 +635,10 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
     }
 
     ImGui::BeginDisabled(!blocked.empty());
-    save = ImGui::Button("Save") || save;
+    save = ImGui::Button(tr_label("Save")) || save;
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) {
+    if (ImGui::Button(tr_label("Cancel"))) {
         options.export_dialog = false;
         dialog.seeded = false;
     }
@@ -645,7 +648,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
 
         std::error_code ec;
         if (dialog.status.empty() && !std::filesystem::is_directory(dialog.directory, ec)) {
-            dialog.status = "the folder is gone";
+            dialog.status = tr("the folder is gone");
             dialog.relist = true;
         }
         if (dialog.status.empty()) {
@@ -654,7 +657,7 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
                 candidate += path_of(std::format(".{}", extension));
             }
             if (std::filesystem::is_directory(candidate, ec)) {
-                dialog.status = "that name is a folder";
+                dialog.status = tr("that name is a folder");
             }
             else {
                 dialog.chosen = std::move(candidate);

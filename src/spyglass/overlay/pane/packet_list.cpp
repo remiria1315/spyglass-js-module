@@ -1,4 +1,5 @@
 #include "spyglass/overlay/pane/packet_list.h"
+#include "spyglass/overlay/i18n.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -57,7 +58,7 @@ void time_column(const ViewOptions &options, const Capture &capture, const Recor
 void draw_find_bar(Capture &capture, const Filter &filter, PacketList &list, ViewOptions &options)
 {
     ImGui::SetNextItemWidth(140.0F);
-    const char *const scopes[] = {"packet name", "packet id", "body hex", "body text"};
+    const char *const scopes[] = {tr("packet name"), tr("packet id"), tr("body hex"), tr("body text")};
     auto scope = static_cast<int>(list.find.scope);
     if (ImGui::Combo("##scope", &scope, scopes, static_cast<int>(std::size(scopes)))) {
         list.find.scope = static_cast<FindScope>(scope);
@@ -66,7 +67,7 @@ void draw_find_bar(Capture &capture, const Filter &filter, PacketList &list, Vie
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(240.0F);
-    auto next = ImGui::InputTextWithHint("##find", "find a packet", list.find.query, sizeof(list.find.query),
+    auto next = ImGui::InputTextWithHint("##find", tr("find a packet"), list.find.query, sizeof(list.find.query),
                                          ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemEdited()) {
         list.find.missed = false;
@@ -87,25 +88,25 @@ void draw_find_bar(Capture &capture, const Filter &filter, PacketList &list, Vie
 
     if (list.find.scanning) {
         ImGui::SameLine();
-        if (ImGui::Button("Stop")) {
+        if (ImGui::Button(tr_label("Stop"))) {
             list.find.scanning = false;
             list.find.missed = list.find.found == 0;
         }
         ImGui::SameLine();
         const auto share =
             list.find.total == 0 ? 0.0F : static_cast<float>(list.find.scanned) / static_cast<float>(list.find.total);
-        ImGui::TextColored(kMuted, "searching %.0f%%", 100.0F * std::min(share, 1.0F));
+        ImGui::TextColored(palette().muted, tr("searching %.0f%%"), 100.0F * std::min(share, 1.0F));
     }
     else if (list.find.missed) {
         ImGui::SameLine();
-        ImGui::TextColored(kBadPacket, "no match");
+        ImGui::TextColored(palette().bad_packet, tr("no match"));
     }
 
     ImGui::SameLine();
     const float right = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-    const float width = ImGui::CalcTextSize("Close").x + (2.0F * ImGui::GetStyle().FramePadding.x);
+    const float width = ImGui::CalcTextSize(tr("Close")).x + (2.0F * ImGui::GetStyle().FramePadding.x);
     ImGui::SameLine(std::max(ImGui::GetCursorPosX(), right - width));
-    if (ImGui::Button("Close")) {
+    if (ImGui::Button(tr_label("Close"))) {
         options.find_bar = false;
     }
 }
@@ -189,13 +190,13 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
     }
 
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("No.", ImGuiTableColumnFlags_WidthFixed, 60.0F);
-    ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 100.0F);
-    ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthFixed, 90.0F);
-    ImGui::TableSetupColumn("Destination", ImGuiTableColumnFlags_WidthFixed, 90.0F);
-    ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthFixed, 44.0F);
-    ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 60.0F);
-    ImGui::TableSetupColumn("Info", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(tr_label("No."), ImGuiTableColumnFlags_WidthFixed, 60.0F);
+    ImGui::TableSetupColumn(tr_label("Time"), ImGuiTableColumnFlags_WidthFixed, 100.0F);
+    ImGui::TableSetupColumn(tr_label("Source"), ImGuiTableColumnFlags_WidthFixed, 90.0F);
+    ImGui::TableSetupColumn(tr_label("Destination"), ImGuiTableColumnFlags_WidthFixed, 90.0F);
+    ImGui::TableSetupColumn(tr_label("Id"), ImGuiTableColumnFlags_WidthFixed, 44.0F);
+    ImGui::TableSetupColumn(tr_label("Length"), ImGuiTableColumnFlags_WidthFixed, 60.0F);
+    ImGui::TableSetupColumn(tr_label("Info"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableHeadersRow();
 
     if (options.resize_columns) {
@@ -218,10 +219,10 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
 
             ImGui::TableNextRow();
             if (list.marks.contains(record.number)) {
-                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(kMarkedRow));
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(palette().marked_row));
             }
             else if (options.colorize && !record.decoded) {
-                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(kBadRow));
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(palette().bad_row));
             }
 
             ImGui::TableNextColumn();
@@ -242,15 +243,15 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
 
             ImGui::TableNextColumn();
             if (record.number == list.reference) {
-                ImGui::TextColored(kFindHit, "*REF*");
+                ImGui::TextColored(palette().find_hit, "*REF*");
             }
             else {
                 time_column(options, capture, record, previous_displayed, reference);
             }
             ImGui::TableNextColumn();
-            text(record.direction == Direction::Outbound ? "client" : "server");
+            text(tr(record.direction == Direction::Outbound ? "client" : "server"));
             ImGui::TableNextColumn();
-            text(record.direction == Direction::Outbound ? "server" : "client");
+            text(tr(record.direction == Direction::Outbound ? "server" : "client"));
             ImGui::TableNextColumn();
             ImGui::Text("%d", record.id);
             ImGui::TableNextColumn();
@@ -258,9 +259,9 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
 
             ImGui::TableNextColumn();
             const auto bad = options.colorize && !record.decoded;
-            ImGui::PushStyleColor(ImGuiCol_Text, bad ? kBadPacket : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+            ImGui::PushStyleColor(ImGuiCol_Text, bad ? palette().bad_packet : ImGui::GetStyleColorVec4(ImGuiCol_Text));
             if (record.name.empty()) {
-                ImGui::Text("id %d", record.id);
+                ImGui::Text(tr("id %d"), record.id);
             }
             else {
                 text(record.name);
@@ -275,7 +276,7 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
     if (active && list.displayed == 0) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(6);
-        ImGui::TextColored(kMuted, "no packets match the filter");
+        ImGui::TextColored(palette().muted, tr("no packets match the filter"));
     }
 
     if (list.follow) {
@@ -295,29 +296,29 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
         char label[192];
         ImGui::BeginDisabled(list.menu_id < 0);
         if (list.menu_name.empty()) {
-            std::snprintf(label, sizeof(label), "Hide id %d", list.menu_id);
+            std::snprintf(label, sizeof(label), tr("Hide id %d"), list.menu_id);
         }
         else {
-            std::snprintf(label, sizeof(label), "Hide %s", list.menu_name.c_str());
+            std::snprintf(label, sizeof(label), tr("Hide %s"), list.menu_name.c_str());
         }
         if (ImGui::MenuItem(label)) {
             filter.allow(list.menu_id, false);
         }
         if (list.menu_name.empty()) {
-            std::snprintf(label, sizeof(label), "Show only id %d", list.menu_id);
+            std::snprintf(label, sizeof(label), tr("Show only id %d"), list.menu_id);
         }
         else {
-            std::snprintf(label, sizeof(label), "Show only %s", list.menu_name.c_str());
+            std::snprintf(label, sizeof(label), tr("Show only %s"), list.menu_name.c_str());
         }
         if (ImGui::MenuItem(label)) {
             std::fill(filter.enabled.begin(), filter.enabled.end(), std::uint8_t{0});
             filter.allow(list.menu_id, true);
         }
         if (list.menu_name.empty()) {
-            std::snprintf(label, sizeof(label), "Next id %d", list.menu_id);
+            std::snprintf(label, sizeof(label), tr("Next id %d"), list.menu_id);
         }
         else {
-            std::snprintf(label, sizeof(label), "Next %s", list.menu_name.c_str());
+            std::snprintf(label, sizeof(label), tr("Next %s"), list.menu_name.c_str());
         }
         if (ImGui::MenuItem(label)) {
             jump(capture, filter, list, Jump::NextSameId);
@@ -326,7 +327,7 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
 
         ImGui::Separator();
         const auto marked = list.marks.contains(selected);
-        if (ImGui::MenuItem(marked ? "Unmark packet" : "Mark packet")) {
+        if (ImGui::MenuItem(tr_label(marked ? "Unmark packet" : "Mark packet"))) {
             if (marked) {
                 list.marks.erase(selected);
             }
@@ -334,15 +335,15 @@ void draw_packet_list(Capture &capture, Filter &filter, PacketList &list, ViewOp
                 list.marks.insert(selected);
             }
         }
-        if (ImGui::MenuItem(list.reference == selected ? "Unset time reference" : "Set time reference")) {
+        if (ImGui::MenuItem(tr_label(list.reference == selected ? "Unset time reference" : "Set time reference"))) {
             list.reference = list.reference == selected ? 0 : selected;
         }
-        if (ImGui::MenuItem("Show packet in new window")) {
+        if (ImGui::MenuItem(tr_label("Show packet in new window"))) {
             options.detach = selected;
         }
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Copy row")) {
+        if (ImGui::MenuItem(tr_label("Copy row"))) {
             ImGui::SetClipboardText(list.menu_row.c_str());
         }
         ImGui::EndPopup();

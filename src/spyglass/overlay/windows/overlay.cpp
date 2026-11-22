@@ -228,7 +228,19 @@ void Overlay::create_context()
     font.OversampleH = 1;
     font.OversampleV = 1;
     font.PixelSnapH = true;
-    io.Fonts->AddFontFromFileTTF(mojangles.string().c_str(), 11.0F, &font);
+    const auto *const latin = io.Fonts->AddFontFromFileTTF(mojangles.string().c_str(), 11.0F, &font);
+
+    ImFontConfig japanese;
+    japanese.Flags |= ImFontFlags_NoLoadError;
+    japanese.MergeMode = latin != nullptr;
+    std::wstring windows(MAX_PATH, L'\0');
+    windows.resize(GetWindowsDirectoryW(windows.data(), static_cast<UINT>(windows.size())));
+    for (const auto *name : {L"YuGothM.ttc", L"meiryo.ttc", L"msgothic.ttc"}) {
+        const auto path = std::filesystem::path{windows} / L"Fonts" / name;
+        if (io.Fonts->AddFontFromFileTTF(path.string().c_str(), 11.0F, &japanese) != nullptr) {
+            break;
+        }
+    }
 
     context_ready_ = true;
 }
@@ -313,9 +325,10 @@ void Overlay::present(IDXGISwapChain *swap_chain)
     if (kInputDiagnostics) {
         ImGui::SetNextWindowBgAlpha(0.6F);
         if (ImGui::Begin("spyglass: input", nullptr,
-                         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-                             ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav)) {
-            ImGui::Text("%s hwnd %p subclass %d msg %llu input %llu eaten %llu ptr %llu raw %llu capture %d/%d "
+                         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                             ImGuiWindowFlags_NoNav)) {
+            ImGui::Text("%s hwnd %p subclass %d msg %llu input %llu eaten %llu ptr "
+                        "%llu raw %llu capture %d/%d "
                         "cursor %d",
                         __TIME__, static_cast<void *>(input_.window()), input_.installed() ? 1 : 0, input_.seen(),
                         input_.seen_input(), input_.eaten(), input_.pointer(), input_.raw(),
