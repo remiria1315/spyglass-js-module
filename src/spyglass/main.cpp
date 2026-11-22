@@ -1,10 +1,6 @@
-#ifdef _WIN32
 #include <Windows.h>
-#endif
 
 #include "spyglass/install.h"
-
-#ifdef _WIN32
 
 BOOL WINAPI DllMain(const HINSTANCE module, const DWORD reason, LPVOID /*reserved*/)
 {
@@ -15,12 +11,3 @@ BOOL WINAPI DllMain(const HINSTANCE module, const DWORD reason, LPVOID /*reserve
     }
     return TRUE;
 }
-
-#else
-
-extern "C" void mod_init()
-{
-    spyglass::install();
-}
-
-#endif

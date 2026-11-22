@@ -111,6 +111,4 @@ private:
     std::unique_ptr<class SessionSummaryPublisher> session_summary_publisher_;
 };
 
-#ifdef _WIN32
 static_assert(sizeof(NetworkSystem) == 0x220);
-#endif

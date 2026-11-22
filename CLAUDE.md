@@ -5,9 +5,8 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 ## Project Overview
 
 Spyglass reports what the Minecraft: Bedrock client failed to decode: which packet, how far into
-it the decode got, and the reason the client gave. It runs inside the client — a DLL an injector
-loads on Windows, an Android x86_64 shared object the Linux launcher loads as a mod — hooks
-`Packet::readNoHeader`, and draws its findings in an ImGui overlay.
+it the decode got, and the reason the client gave. It runs inside the client as a DLL an injector
+loads, hooks `Packet::readNoHeader`, and draws its findings in an ImGui overlay.
 
 ## Rules
 
@@ -46,9 +45,8 @@ type MSVC passes a member its `this` in `rcx` and the return buffer in `rdx`, an
 the other way round, so the swap hands the detour its return buffer where it expects the object.
 
 Nothing about this fails loudly. The forwarding call passes the registers straight through, so the
-hooked function still decodes correctly and only the detour misreads its own arguments; the Itanium
-ABI passes both alike, so the Android build stays right while Windows dies on the first packet.
-Spyglass shipped that bug for a week and it read as a client update.
+hooked function still decodes correctly and only the detour misreads its own arguments, and the
+client dies on the first packet. Spyglass shipped that bug for a week and it read as a client update.
 
 ### One dependency source
 
@@ -58,9 +56,7 @@ no vendored copies, no submodules, no system packages, no per-platform exception
 ships no CMake of its own has its build written in its own directory, never inlined into the top
 level.
 
-Every dependency is pinned to a tag or a commit, and both platforms take the same revision. imgui
-is pinned to the revision the launcher's own submodule sits on: the two copies share one
-`ImGuiContext`, so a different revision is a different layout.
+Every dependency is pinned to a tag or a commit.
 
 EnTT is the exception, and only because it has to be: cereal's reflection *is* EnTT's, so the pin
 has to be whatever the client was compiled against, and that changed at 1.26.50. Its directory
@@ -69,30 +65,19 @@ right one. Nothing else picks between them, and no other dependency gets to grow
 
 ### One build description
 
-`CMakeLists.txt` describes all targets. Platform differences are the narrow parts that genuinely
-differ — a source list, a system library — not two parallel worlds under an `if`. Prefer explicit
-source lists over `file(GLOB)` plus `list(REMOVE_ITEM)`: a glob that is immediately filtered is a
-glob that should not have been written.
+`CMakeLists.txt` describes all targets. Prefer explicit source lists over `file(GLOB)` plus
+`list(REMOVE_ITEM)`: a glob that is immediately filtered is a glob that should not have been written.
 
-### Toolchains
+### Toolchain
 
-| target | toolchain |
-| --- | --- |
-| Windows DLL and injector | clang-cl, MSVC's Windows SDK and STL |
-| Launcher mod | Android NDK (clang, libc++), x86_64 |
+The Windows DLL and the injector build with clang-cl, MSVC's Windows SDK and STL. They build through
+`CMakePresets.json`, as `release-windows` and `relwithdebinfo-windows`, each configuring into
+`build/<preset>`. The presets hide themselves off a Windows host.
 
-There is no Linux target. The Linux launcher runs the Android build of the client under its own
-linker, so the payload it loads is an Android shared object built against bionic, not a Linux one.
-Both platforms build through `CMakePresets.json`, as `debug-windows` and `debug-android` and the
-same for `release` and `relwithdebinfo`, each configuring into `build/<preset>`. The Android presets
-take the NDK from `ANDROID_NDK_ROOT` and hide themselves when it is unset. The Windows presets hide
-themselves off a Windows host.
+### CI covers every target
 
-### CI covers every platform
-
-Every platform that ships is built in CI. A target nobody builds is a target that is already
-broken. Release artifacts are the injector and the DLL for Windows, and the Android mod the Linux
-launcher loads.
+Every target that ships is built in CI. A target nobody builds is a target that is already
+broken. Release artifacts are the injector and the DLL.
 
 ### Read the client, do not reason about it
 
@@ -127,10 +112,9 @@ against the client for free, at build time, before anything is dereferenced.
 
 ### Declare the type, never the layout
 
-Write the client's type as the client declares it and let the compiler lay it out. Both platforms
-build against the same standard library the client was built with — MSVC's STL under clang-cl,
-libc++ on Android — so a faithfully declared `std::map`, `std::variant`, `std::string` or
-`std::vector` has the client's layout exactly, and can be iterated, visited and indexed like any
+Write the client's type as the client declares it and let the compiler lay it out. The build uses
+the same standard library the client was built with — MSVC's STL under clang-cl — so a faithfully
+declared `std::map`, `std::variant`, `std::string` or `std::vector` has the client's layout exactly, and can be iterated, visited and indexed like any
 other. `endstone/src/bedrock/nbt/` is the reference for what that looks like, including the
 forward-declare and bottom-include shape that resolves a circular type.
 
@@ -138,12 +122,12 @@ Never hand-roll the walk. A mirrored red-black node with `void *` links and hand
 `std::variant` faked as a byte array plus a discriminant, a hand-computed field offset — all of it is
 a reimplementation of something the compiler already does correctly, and every offset in it is a
 guess that has to be re-checked on every client update. The NBT tree was written that way once. It
-cost a node mirror, a manual discriminant read, and a `#ifdef _WIN32` that left Android unable to
-read NBT at all, and the faithful version deleted all three and was shorter.
+cost a node mirror, a manual discriminant read and a platform `#ifdef`, and the faithful version
+deleted all three and was shorter.
 
 This does not soften the rule above. Mirror only the members that have been read, and give the rest
-`void *` — but write the ones you do mirror as their real types, and assert the size on both
-platforms so a layout that does not match fails the build rather than the client.
+`void *` — but write the ones you do mirror as their real types, and assert the size so a layout
+that does not match fails the build rather than the client.
 
 ### The client's meta context is not this module's
 
@@ -206,16 +190,13 @@ the formatting rules. Beyond it:
 
 | directory | contents |
 | --- | --- |
-| `src/bedrock/` | Reconstructed client types. Layout must match the real client on both platforms. |
+| `src/bedrock/` | Reconstructed client types. Layout must match the real client. |
 | `src/spyglass/core/` | Logging, output directory, time. |
 | `src/spyglass/hook/` | Pattern scanning, the detour wrapper, the packet hooks. |
 | `src/spyglass/diagnostics/` | Building, formatting and storing a report. |
 | `src/spyglass/script/` | The QuickJS runtime, the module loader, and the `!!module` chat commands. |
-| `src/spyglass/overlay/` | The ImGui view, and the per-platform plumbing that hosts it. |
+| `src/spyglass/overlay/` | The ImGui view, and the Windows plumbing that hosts it. |
 | `src/injector/` | The Windows injector. Not part of the payload. |
-
-The two platforms differ in three places and nowhere else: how the payload is entered, how the
-client's memory is found, and who owns the ImGui context. Everything between those is shared code.
 
 ## Client Compatibility
 

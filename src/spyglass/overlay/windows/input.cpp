@@ -1,5 +1,3 @@
-#ifdef _WIN32
-
 #include "spyglass/overlay/windows/input.h"
 
 #include <cstddef>
@@ -178,5 +176,3 @@ LRESULT InputHook::process(const HWND window, const UINT message, const WPARAM w
 }
 
 }  // namespace spyglass
-
-#endif

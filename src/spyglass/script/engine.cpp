@@ -26,10 +26,8 @@
 #include <imgui.h>
 #include <quickjs.h>
 
-#ifdef _WIN32
 #include <Windows.h>
 #include <shellapi.h>
-#endif
 
 #include "spyglass/camera.h"
 #include "spyglass/core/output.h"
@@ -4275,13 +4273,7 @@ std::string load(const std::string &name)
                       JS_NewCFunctionMagic(module.ctx, js_box, "drawBox", 3, JS_CFUNC_generic_magic, 0));
     JS_SetPropertyStr(module.ctx, native, "drawBlock",
                       JS_NewCFunctionMagic(module.ctx, js_box, "drawBlock", 2, JS_CFUNC_generic_magic, 1));
-    JS_SetPropertyStr(module.ctx, native, "platform",
-#ifdef _WIN32
-                      JS_NewString(module.ctx, "windows")
-#else
-                      JS_NewString(module.ctx, "android")
-#endif
-    );
+    JS_SetPropertyStr(module.ctx, native, "platform", JS_NewString(module.ctx, "windows"));
     const auto env = JS_NewObject(module.ctx);
     if (module.entry.filename() == "index.js" && module.root.filename() == path_of(name)) {
         for (const auto &[key, value] : read_env(module.root / ".env")) {
@@ -4792,9 +4784,7 @@ try {
     if (verb == "folder") {
         std::error_code ec;
         std::filesystem::create_directories(modules_directory(), ec);
-#ifdef _WIN32
         ShellExecuteW(nullptr, L"open", modules_directory().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-#endif
         add_log("", std::format("modules folder: {}", path_text(modules_directory())), false);
     }
     else if (verb == "list") {

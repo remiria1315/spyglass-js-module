@@ -1,5 +1,3 @@
-#ifdef _WIN32
-
 #include "spyglass/overlay/windows/overlay.h"
 
 #include <filesystem>
@@ -341,5 +339,3 @@ void install_overlay()
 }
 
 }  // namespace spyglass
-
-#endif

@@ -7,17 +7,7 @@
 #include <system_error>
 #include <utility>
 
-#ifdef _WIN32
-
 #include <Windows.h>
-
-#else
-
-#include <fcntl.h>
-#include <sys/file.h>
-#include <unistd.h>
-
-#endif
 
 #include "spyglass/error.h"
 #include "spyglass/network.h"
@@ -40,7 +30,6 @@ constexpr auto kIdle = std::chrono::milliseconds{50};
 
 std::intptr_t take_lock(const std::filesystem::path &path)
 {
-#ifdef _WIN32
     auto *const handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                      nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
@@ -53,17 +42,6 @@ std::intptr_t take_lock(const std::filesystem::path &path)
         return kNoLock;
     }
     return reinterpret_cast<std::intptr_t>(handle);
-#else
-    const auto descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-    if (descriptor < 0) {
-        return kNoLock;
-    }
-    if (flock(descriptor, LOCK_EX | LOCK_NB) != 0) {
-        close(descriptor);
-        return kNoLock;
-    }
-    return descriptor;
-#endif
 }
 
 void drop_lock(std::intptr_t &lock)
@@ -71,11 +49,7 @@ void drop_lock(std::intptr_t &lock)
     if (lock == kNoLock) {
         return;
     }
-#ifdef _WIN32
     CloseHandle(reinterpret_cast<HANDLE>(lock));
-#else
-    close(static_cast<int>(lock));
-#endif
     lock = kNoLock;
 }
 

@@ -16,13 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of view. It also returns `scale`, the pixels one block spans at that point, to size marks by distance.
 - `draw.block` and `draw.box` outline a block or a box in the world, with an optional fill.
 - `draw.fov` is the field of view in degrees that the client rendered with, including the change while sprinting. It is
-  `null` on Android and until the first frame.
-- `draw.camera` is the position, yaw, pitch and field of view of the camera the client renders with. It is `null` on
-  Android and until the first frame.
+  `null` until the first frame.
+- `draw.camera` is the position, yaw, pitch and field of view of the camera the client renders with. It is `null` until
+  the first frame.
 - `bus`, imported from `"spyglass"`, sends messages between modules. `bus.on(topic, listener)` listens and
   `bus.emit(topic, data)` sends JSON data to the listeners of the other modules.
 - A module in a folder reads a `.env` file next to its `index.js`. The values are available as `env`, imported from
   `"spyglass"`.
+
+### Removed
+
+- The Android build for the Linux launcher. Spyglass now runs on Windows only, and there is no Linux zip any more.
 
 ## [0.5.6] - 2026-10-29 
 

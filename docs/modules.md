@@ -5,8 +5,8 @@ A module is a JavaScript file that runs inside the client and reacts to packets.
 
 ## Folder
 
-Modules live in `%LOCALAPPDATA%\spyglass\modules` on Windows and `~/.local/share/spyglass/modules` on the Linux
-launcher. A module is either `<name>.js` or `<name>/index.js`. A name uses letters, digits, `_`, `-` and `.`.
+Modules live in `%LOCALAPPDATA%\spyglass\modules`. A module is either `<name>.js` or `<name>/index.js`. A name uses
+letters, digits, `_`, `-` and `.`.
 
 A module in a folder can be split into several files. The folder name is the module name, `index.js` is the entry, and
 the other files are imported with relative paths. A `.env` file in that folder is read when the module loads and its
@@ -42,7 +42,7 @@ modules window of the overlay.
 
 | command | |
 | --- | --- |
-| `!!module folder` | opens the modules folder (Windows), or prints its path |
+| `!!module folder` | opens the modules folder and prints its path |
 | `!!module list` | lists the modules and whether each is enabled |
 | `!!module enable <name>` | loads a module and keeps it enabled across restarts |
 | `!!module disable <name>` | unloads a module and keeps it disabled |
@@ -282,8 +282,8 @@ number `0xrrggbbaa`, and default to white.
 | `draw.polyline(points, { color, thickness, closed })` | lines through an array of `{ x, y }`. `closed: true` joins the last point to the first. At most 4096 points. |
 | `draw.text(x, y, text, { color, size })` | text from its top left corner. `size` is in pixels and defaults to the overlay font size. At most 4096 bytes are drawn. |
 | `draw.textSize(text, size?)` | `{ width, height }` of the text, for centring or backgrounds |
-| `draw.fov` | the vertical field of view in degrees that the client last rendered with, or `null` until it has one. Windows only |
-| `draw.camera` | `{ x, y, z, yaw, pitch, fov }` of the camera the client is rendering with, or `null` until it has one. Windows only |
+| `draw.fov` | the vertical field of view in degrees that the client last rendered with, or `null` until it has one |
+| `draw.camera` | `{ x, y, z, yaw, pitch, fov }` of the camera the client is rendering with, or `null` until it has one |
 | `draw.setCamera(camera)` | sets the camera for the calls below until the end of the callback |
 | `draw.worldToScreen(point, camera?)` | `{ x, y, depth, scale }` in pixels, or `null` if the point is behind the camera |
 | `draw.block(position, { color, thickness, fill, camera })` | outlines the block that contains `position` |
@@ -391,8 +391,7 @@ const response = await fetch("https://example.com/api", { method: "POST", header
 response.status; response.ok; response.headers; response.text(); response.json(); response.bytes();
 ```
 
-`net.fetch` is the same function. Only `http://` and `https://` work, and only on Windows. At most 16 requests per
-module run at once.
+`net.fetch` is the same function. Only `http://` and `https://` work. At most 16 requests per module run at once.
 
 ```js
 import { WebSocket } from "spyglass";
@@ -402,7 +401,7 @@ socket.onmessage = (event) => console.log(event.data);
 socket.onclose = (event) => console.log(event.code, event.reason);
 ```
 
-`WebSocket` is also `net.WebSocket`. Only `ws://` and `wss://` work, and only on Windows. `send` takes a string, or a
+`WebSocket` is also `net.WebSocket`. Only `ws://` and `wss://` work. `send` takes a string, or a
 `Uint8Array`, an `ArrayBuffer` or a `BinaryWriter` for a binary message. `event.data` of `onmessage` is a string for a
 text message and a `Uint8Array` for a binary one. `onopen`, `onmessage`, `onerror` and `onclose` can be set, and
 `addEventListener` and `removeEventListener` take the same four names. `readyState` is 0 while connecting, 1 open, 2

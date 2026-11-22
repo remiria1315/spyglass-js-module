@@ -28,10 +28,6 @@ private:
     TagMap mTags;
 };
 
-#ifdef _WIN32
 static_assert(sizeof(CompoundTag) == 24);
-#else
-static_assert(sizeof(CompoundTag) == 32);
-#endif
 
 #include "bedrock/nbt/compound_tag_variant.h"

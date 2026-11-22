@@ -1,5 +1,3 @@
-#ifdef _WIN32
-
 #include "spyglass/overlay/windows/d3d12_backend.h"
 
 #include <algorithm>
@@ -241,5 +239,3 @@ void D3D12Backend::release_buffers()
 }
 
 }  // namespace spyglass
-
-#endif

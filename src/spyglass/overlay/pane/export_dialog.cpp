@@ -20,15 +20,7 @@
 #include "spyglass/overlay/pane/packet_list.h"
 #include "spyglass/overlay/theme.h"
 
-#ifdef _WIN32
-
 #include <Windows.h>
-
-#else
-
-#include <cstdlib>
-
-#endif
 
 namespace spyglass {
 namespace {
@@ -109,13 +101,10 @@ std::string name_problem(const std::string_view name)
         if (character == '/') {
             return "the file name cannot contain a path separator";
         }
-#ifdef _WIN32
         if (character == '\\' || std::string_view{"<>:\"|?*"}.find(character) != std::string_view::npos) {
             return "the file name cannot contain \\ / : * ? \" < > or |";
         }
-#endif
     }
-#ifdef _WIN32
     if (name.back() == ' ' || name.back() == '.') {
         return "the file name cannot end with a space or a dot";
     }
@@ -135,7 +124,6 @@ std::string name_problem(const std::string_view name)
             return std::format("{} is a reserved device name", entry);
         }
     }
-#endif
     return {};
 }
 
@@ -312,7 +300,6 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
     if (ImGui::Button("Spyglass")) {
         pending = output_directory();
     }
-#ifdef _WIN32
     const auto drives = GetLogicalDrives();
     for (unsigned letter = 0; letter < 26; ++letter) {
         if (((drives >> letter) & 1U) == 0) {
@@ -325,18 +312,6 @@ void draw_export_dialog(const Capture &capture, const Filter &filter, const Pack
             pending = std::filesystem::path{root};
         }
     }
-#else
-    if (const auto *const home = std::getenv("HOME"); home != nullptr && *home != '\0') {
-        ImGui::SameLine();
-        if (ImGui::Button("Home")) {
-            pending = path_of(home);
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("/")) {
-        pending = std::filesystem::path{"/"};
-    }
-#endif
     ImGui::SameLine();
     ImGui::BeginDisabled(dialog.directory.parent_path() == dialog.directory);
     if (ImGui::Button("Up")) {

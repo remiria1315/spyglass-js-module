@@ -27,19 +27,13 @@ struct ReflectionContext {
 
 }  // namespace internal
 
-#ifdef _WIN32
 struct ReflectionCtx : Bedrock::EnableNonOwnerReferences, private internal::ReflectionContext {
-#else
-struct ReflectionCtx : private internal::ReflectionContext, Bedrock::EnableNonOwnerReferences {
-#endif
     [[nodiscard]] const internal::ReflectionContext &internal() const
     {
         return static_cast<const internal::ReflectionContext &>(*this);
     }
 };
 
-#ifdef _WIN32
 static_assert(sizeof(ReflectionCtx) == 0x80);
-#endif
 
 }  // namespace cereal

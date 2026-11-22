@@ -11,25 +11,12 @@
 #include <stdexcept>
 #include <thread>
 
-#ifdef _WIN32
 #include <Windows.h>
 #include <winhttp.h>
-#else
-#include <fcntl.h>
-#include <poll.h>
-#include <signal.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-#include <cerrno>
-#include <cstdlib>
-#endif
 
 #include "spyglass/core/output.h"
 
 namespace spyglass::script {
-
-#ifdef _WIN32
 
 namespace {
 
@@ -385,110 +372,5 @@ ProcessResult run_process(const std::string &file, const std::vector<std::string
     result.code = static_cast<int>(code);
     return result;
 }
-
-#else
-
-HttpResponse http_request(const HttpRequest &, int)
-{
-    throw std::runtime_error{"fetch is not available on this platform"};
-}
-
-int websocket_open(const std::string &, const std::vector<std::pair<std::string, std::string>> &, int)
-{
-    throw std::runtime_error{"WebSocket is not available on this platform"};
-}
-
-void websocket_send(int, std::string_view, bool)
-{
-    throw std::runtime_error{"WebSocket is not available on this platform"};
-}
-
-WebSocketMessage websocket_receive(int)
-{
-    throw std::runtime_error{"WebSocket is not available on this platform"};
-}
-
-void websocket_close(int, int, std::string_view)
-{
-    throw std::runtime_error{"WebSocket is not available on this platform"};
-}
-
-ProcessResult run_process(const std::string &file, const std::vector<std::string> &args,
-                          const std::filesystem::path &cwd, const int timeout_ms)
-{
-    int output[2];
-    if (pipe(output) != 0) {
-        throw std::runtime_error{"pipe failed"};
-    }
-
-    std::vector<char *> argv;
-    argv.push_back(const_cast<char *>(file.c_str()));
-    for (const auto &arg : args) {
-        argv.push_back(const_cast<char *>(arg.c_str()));
-    }
-    argv.push_back(nullptr);
-    const auto directory = path_text(cwd);
-
-    const auto child = fork();
-    if (child < 0) {
-        close(output[0]);
-        close(output[1]);
-        throw std::runtime_error{"fork failed"};
-    }
-    if (child == 0) {
-        dup2(output[1], 1);
-        dup2(output[1], 2);
-        close(output[0]);
-        close(output[1]);
-        const auto null = open("/dev/null", 0);
-        dup2(null, 0);
-        if (!directory.empty() && chdir(directory.c_str()) != 0) {
-            _exit(126);
-        }
-        execvp(file.c_str(), argv.data());
-        _exit(127);
-    }
-    close(output[1]);
-
-    ProcessResult result;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{timeout_ms};
-    auto failure = std::string{};
-    for (;;) {
-        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-        if (left.count() <= 0) {
-            kill(child, SIGKILL);
-            failure = std::format("'{}' ran longer than {} ms", file, timeout_ms);
-            break;
-        }
-        pollfd entry{output[0], POLLIN, 0};
-        const auto ready = poll(&entry, 1, static_cast<int>(std::min<long long>(left.count(), 50)));
-        if (ready > 0) {
-            char buffer[4096];
-            const auto read = ::read(output[0], buffer, sizeof(buffer));
-            if (read <= 0) {
-                break;
-            }
-            result.output.append(buffer, static_cast<std::size_t>(read));
-            if (result.output.size() > 8U * 1024U * 1024U) {
-                kill(child, SIGKILL);
-                failure = "the output is larger than 8 MB";
-                break;
-            }
-        }
-    }
-    close(output[0]);
-    int status = 0;
-    waitpid(child, &status, 0);
-    if (!failure.empty()) {
-        throw std::runtime_error{failure};
-    }
-    result.code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-    if (result.code == 127 && result.output.empty()) {
-        throw std::runtime_error{std::format("cannot start '{}'", file)};
-    }
-    return result;
-}
-
-#endif
 
 }  // namespace spyglass::script

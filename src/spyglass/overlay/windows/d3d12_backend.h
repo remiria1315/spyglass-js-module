@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef _WIN32
-
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -54,5 +52,3 @@ private:
 };
 
 }  // namespace spyglass
-
-#endif

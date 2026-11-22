@@ -10,7 +10,7 @@
 </p>
 
 [![CI](https://github.com/remiria1315/spyglass-js-module/actions/workflows/ci.yml/badge.svg)](https://github.com/remiria1315/spyglass-js-module/actions/workflows/ci.yml)
-[![Minecraft](https://img.shields.io/badge/minecraft-Bedrock_(Windows,_Linux)-black)](https://www.minecraft.net/en-us/download)
+[![Minecraft](https://img.shields.io/badge/minecraft-Bedrock_(Windows)-black)](https://www.minecraft.net/en-us/download)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 soygrass [![Discord](https://img.shields.io/discord/1230982180742631457?logo=discord&logoColor=white&color=5865F2)](https://discord.gg/xxgPuc2XN9)
 
@@ -43,7 +43,7 @@ soygrass [![Discord](https://img.shields.io/discord/1230982180742631457?logo=dis
 - `Statistics` — セッションのキャプチャ内容、IDごとのバイト数の割合の内訳、パケット長の分布、および1秒あたりのパケット数またはバイト数のグラフ。
 - `File` — `Export Packets...`（すべてのパケット、選択したパケット、マークされたパケット、または範囲指定したパケットを、キャプチャ全体またはフィルター表示中のみを対象とし、サマリー行、詳細ツリー、バイト表現を任意の組み合わせでテキスト、CSV、JSON形式でエクスポート）。件数のカウントとサイズ見積もりの後、ゲームを停止させることなく、キャンセル可能なプログレスバーの裏で実行されます。`Export Selected Packet Bytes...` は選択範囲の生データ（未選択時はボディ全体）を書き出します。`Export Session Summary...` は合計値を書き出します。
 
-保存ダイアログは `%LOCALAPPDATA%\spyglass`（Linuxランチャーの場合は `~/.local/share/spyglass`）で開き、現在のディレクトリを表示し、フルパスの直接入力を受け付け、ファイルを上書きする前に警告を表示します。
+保存ダイアログは `%LOCALAPPDATA%\spyglass` で開き、現在のディレクトリを表示し、フルパスの直接入力を受け付け、ファイルを上書きする前に警告を表示します。
 
 ---
 

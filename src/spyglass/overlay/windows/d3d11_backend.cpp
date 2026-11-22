@@ -1,5 +1,3 @@
-#ifdef _WIN32
-
 #include "spyglass/overlay/windows/d3d11_backend.h"
 
 #include <imgui.h>
@@ -70,5 +68,3 @@ void D3D11Backend::release_buffers()
 }
 
 }  // namespace spyglass
-
-#endif

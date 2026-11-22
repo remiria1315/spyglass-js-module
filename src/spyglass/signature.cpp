@@ -1,7 +1,5 @@
 #include "spyglass/signature.h"
 
-#ifdef _WIN32
-
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -18,11 +16,7 @@
 
 #include <libhat/process.hpp>
 
-#endif
-
 namespace spyglass {
-
-#ifdef _WIN32
 
 namespace {
 
@@ -108,12 +102,6 @@ void verify_client()
                                              (*version)[3])};
     }
 }
-
-#else
-
-void verify_client() {}
-
-#endif
 
 const Signatures &signatures()
 {
