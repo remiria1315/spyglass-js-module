@@ -1,0 +1,28 @@
+    {"Spyglass: settings", "Spyglass: 設定"},
+    {"General", "一般"},
+    {"Appearance", "外観"},
+    {"Language", "言語"},
+    {"Theme", "テーマ"},
+    {"Dark", "ダーク"},
+    {"Light", "ライト"},
+    {"Zoom", "表示サイズ"},
+    {"Reset zoom", "表示サイズをリセット"},
+    {"Ctrl++ and Ctrl+- change the zoom, Ctrl+0 resets it.", "Ctrl++ と Ctrl+- で表示サイズを変更し、Ctrl+0 でリセットします。"},
+    {"Packet list", "パケット一覧"},
+    {"Time display format", "時刻の表示形式"},
+    {"Seconds Since First Packet", "最初のパケットからの秒数"},
+    {"Seconds Since Previous Captured Packet", "直前のキャプチャ済みパケットからの秒数"},
+    {"Seconds Since Previous Displayed Packet", "直前の表示中パケットからの秒数"},
+    {"Time of Day", "時刻"},
+    {"Index cache (MB)", "インデックスキャッシュ (MB)"},
+    {"Writer queue (MB)", "ライターキュー (MB)"},
+    {"Capture sent packets", "送信パケットをキャプチャ"},
+    {"Sent packets are never stored while this is off.", "オフの間、送信パケットは保存されません。"},
+    {"Packets stream to a capture file and are read back as they are shown, so\n"
+     "nothing is dropped for age and memory does not grow with the session.",
+     "パケットはキャプチャファイルに書き出され、表示時に読み戻されます。\n"
+     "古いパケットが破棄されることはなく、メモリ使用量もセッションの長さに比例しません。"},
+    {"The queue holds packets the writer has not reached yet. A packet that\n"
+     "arrives when it is full is dropped and counted in the status bar.",
+     "キューには、ライターがまだ処理していないパケットが入ります。満杯のときに\n"
+     "届いたパケットは破棄され、ステータスバーに件数が表示されます。"},

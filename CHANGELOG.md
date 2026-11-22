@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bus.emit(topic, data)` sends JSON data to the listeners of the other modules.
 - A module in a folder reads a `.env` file next to its `index.js`. The values are available as `env`, imported from
   `"spyglass"`.
+- `Ctrl++`, `Ctrl+-` and `Ctrl+0` zoom the whole window, including the menu bar, toolbar and status bar. The keys work
+  while the Spyglass window has focus.
+- A light theme and a new dark theme.
+- A settings window under Edit. It holds the language, theme, zoom, time display format, packet list options, pane
+  visibility and the capture options. The settings are saved to `settings.json` in the output directory and restored on
+  the next launch.
+- The interface can be shown in Japanese. On Windows it uses Yu Gothic, Meiryo or MS Gothic. On Android it uses the font
+  of the launcher.
+
+### Changed
+
+- The capture options window is now part of the settings window.
+- Zoom now scales the whole window instead of only the packet panes.
 
 ### Removed
 

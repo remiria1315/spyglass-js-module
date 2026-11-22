@@ -4,11 +4,29 @@
 
 namespace spyglass {
 
-constexpr ImVec4 kMuted{0.62F, 0.64F, 0.68F, 1.0F};
-constexpr ImVec4 kBadPacket{0.94F, 0.45F, 0.40F, 1.0F};
-constexpr ImVec4 kBadRow{0.45F, 0.13F, 0.13F, 0.55F};
-constexpr ImVec4 kFindHit{0.95F, 0.76F, 0.24F, 1.0F};
-constexpr ImVec4 kFilterActive{0.18F, 0.38F, 0.24F, 1.0F};
-constexpr ImVec4 kMarkedRow{0.20F, 0.26F, 0.46F, 0.75F};
+enum class Theme : int {
+    Dark = 0,
+    Light = 1,
+};
+
+struct Palette {
+    ImVec4 muted;
+    ImVec4 bad_packet;
+    ImVec4 bad_row;
+    ImVec4 find_hit;
+    ImVec4 filter_active;
+    ImVec4 marked_row;
+};
+
+[[nodiscard]] const Palette &palette();
+
+class ThemeScope {
+  public:
+    ThemeScope(Theme theme, float zoom);
+    ~ThemeScope();
+
+    ThemeScope(const ThemeScope &) = delete;
+    ThemeScope &operator=(const ThemeScope &) = delete;
+};
 
 }  // namespace spyglass

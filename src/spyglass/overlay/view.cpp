@@ -7,6 +7,8 @@
 
 #include <imgui.h>
 
+#include "spyglass/error.h"
+#include "spyglass/overlay/i18n.h"
 #include "spyglass/overlay/pane/expert_window.h"
 #include "spyglass/overlay/pane/export_dialog.h"
 #include "spyglass/overlay/pane/filter_window.h"
@@ -15,9 +17,11 @@
 #include "spyglass/overlay/pane/packet_bytes.h"
 #include "spyglass/overlay/pane/packet_details.h"
 #include "spyglass/overlay/pane/packet_list.h"
+#include "spyglass/overlay/pane/settings_window.h"
 #include "spyglass/overlay/pane/statistics_window.h"
 #include "spyglass/overlay/pane/status_bar.h"
 #include "spyglass/overlay/pane/toolbar.h"
+#include "spyglass/overlay/settings.h"
 #include "spyglass/overlay/theme.h"
 #include "spyglass/error.h"
 #include "spyglass/reflect.h"
@@ -42,6 +46,19 @@ void splitter(const char *id, float &share, const float usable)
 
 }  // namespace
 
+View::View() : saved_{read_settings()}
+{
+    options_.language = saved_.language;
+    options_.theme = saved_.theme;
+    options_.font_scale = saved_.zoom;
+    options_.time_format = saved_.time_format;
+    options_.details_pane = saved_.details_pane;
+    options_.bytes_pane = saved_.bytes_pane;
+    options_.colorize = saved_.colorize;
+    options_.auto_scroll = saved_.auto_scroll;
+    capture_.set_options(saved_.capture);
+}
+
 View &View::getInstance()
 {
     static View view;
@@ -65,10 +82,47 @@ void View::onPacketReceive(Incoming incoming)
 
 void View::draw()
 {
+    set_language(options_.language);
     advance_export(export_dialog_.job, capture_);
 
     script::tick();
     script::render();
+
+    const auto &io = ImGui::GetIO();
+    if (visible_ && io.KeyCtrl && !io.KeyAlt) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) {
+            step_zoom(options_, 1);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) {
+            step_zoom(options_, -1);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_0, false) || ImGui::IsKeyPressed(ImGuiKey_Keypad0, false)) {
+            options_.font_scale = 1.0F;
+        }
+    }
+
+    const Settings current{
+        .language = options_.language,
+        .theme = options_.theme,
+        .zoom = options_.font_scale,
+        .time_format = options_.time_format,
+        .details_pane = options_.details_pane,
+        .bytes_pane = options_.bytes_pane,
+        .colorize = options_.colorize,
+        .auto_scroll = options_.auto_scroll,
+        .capture = capture_.options(),
+    };
+    if (current != saved_) {
+        saved_ = current;
+        unsaved_ = true;
+        changed_at_ = ImGui::GetTime();
+    }
+    else if (unsaved_ && ImGui::GetTime() - changed_at_ > 0.5) {
+        write_settings(saved_);
+        unsaved_ = false;
+    }
+
+    const ThemeScope theme{options_.theme, options_.font_scale};
     if (script::take_attention()) {
         options_.modules_window = true;
         modules_window_.touched = ImGui::GetTime();
@@ -88,9 +142,9 @@ void View::draw()
 
     if (const auto failures = errors(); !failures.empty() && options_.errors_window) {
         ImGui::SetNextWindowSize(ImVec2{520.0F, 0.0F}, ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Spyglass: errors", &options_.errors_window)) {
+        if (ImGui::Begin(tr_label("Spyglass: errors"), &options_.errors_window)) {
             for (const auto &message : failures) {
-                ImGui::TextColored(kBadPacket, "%s", message.c_str());
+                ImGui::TextColored(palette().bad_packet, "%s", message.c_str());
             }
         }
         ImGui::End();
@@ -100,8 +154,8 @@ void View::draw()
         draw_filter_window(capture_, filter_, filter_window_, options_.filter_window);
     }
 
-    if (options_.capture_options_window) {
-        draw_capture_options(capture_, options_.capture_options_window);
+    if (options_.settings_window) {
+        draw_settings_window(capture_, options_);
     }
 
     if (options_.about_window) {
@@ -132,10 +186,6 @@ void View::draw()
         ImGui::Separator();
 
         const float footer = (2.0F * ImGui::GetStyle().ItemSpacing.y) + ImGui::GetTextLineHeight();
-        const bool zoomed = options_.font_scale != 1.0F;
-        if (zoomed) {
-            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * options_.font_scale);
-        }
         ImGui::BeginChild("panes", ImVec2{0.0F, -footer}, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
 
         const float pane_count = 1.0F + (options_.details_pane ? 1.0F : 0.0F) + (options_.bytes_pane ? 1.0F : 0.0F);
@@ -178,9 +228,6 @@ void View::draw()
         }
 
         ImGui::EndChild();
-        if (zoomed) {
-            ImGui::PopFont();
-        }
 
         ImGui::Separator();
         draw_status_bar(capture_, list_, bytes_view_);
@@ -197,8 +244,10 @@ void View::draw()
         options_.detach = 0;
     }
     for (auto &open : detached_) {
-        char title[64];
-        std::snprintf(title, sizeof(title), "Spyglass: packet %llu", static_cast<unsigned long long>(open.number));
+        const auto number = static_cast<unsigned long long>(open.number);
+        char title[96];
+        const auto length = std::snprintf(title, sizeof(title), tr("Spyglass: packet %llu"), number);
+        std::snprintf(title + length, sizeof(title) - static_cast<std::size_t>(length), "###packet%llu", number);
         ImGui::SetNextWindowSize(ImVec2{640.0F, 520.0F}, ImGuiCond_FirstUseEver);
         if (ImGui::Begin(title, &open.open)) {
             const auto pinned = capture_.details(open.number);

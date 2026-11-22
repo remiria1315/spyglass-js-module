@@ -1,10 +1,17 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 #include "spyglass/overlay/export.h"
+#include "spyglass/overlay/i18n.h"
+#include "spyglass/overlay/theme.h"
 
 namespace spyglass {
+
+inline constexpr float kZoomStep = 0.1F;
+inline constexpr float kSmallestZoom = 0.5F;
+inline constexpr float kLargestZoom = 3.0F;
 
 enum class StatisticsTab : int {
     Properties = 0,
@@ -20,6 +27,13 @@ enum class TimeFormat : int {
     TimeOfDay = 3,
 };
 
+inline constexpr std::array<const char *, 4> kTimeFormatNames{
+    "Seconds Since First Packet",
+    "Seconds Since Previous Captured Packet",
+    "Seconds Since Previous Displayed Packet",
+    "Time of Day",
+};
+
 struct ViewOptions {
     TimeFormat time_format{TimeFormat::SinceFirst};
     bool details_pane{true};
@@ -27,6 +41,8 @@ struct ViewOptions {
     bool colorize{true};
     bool auto_scroll{true};
     float font_scale{1.0F};
+    Language language{Language::English};
+    Theme theme{Theme::Dark};
     bool expand_details{false};
     bool collapse_details{false};
     bool resize_columns{false};
@@ -34,7 +50,7 @@ struct ViewOptions {
     std::uint64_t detach{0};
     bool inspector{true};
     bool filter_window{false};
-    bool capture_options_window{false};
+    bool settings_window{false};
     bool errors_window{true};
     bool about_window{false};
     bool expert_window{false};
@@ -48,4 +64,6 @@ struct ViewOptions {
     char goto_number[16]{};
 };
 
-}  // namespace spyglass
+void step_zoom(ViewOptions &options, int steps);
+
+} // namespace spyglass

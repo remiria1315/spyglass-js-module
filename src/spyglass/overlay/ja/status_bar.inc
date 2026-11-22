@@ -1,0 +1,7 @@
+    {"Packets: %llu", "パケット: %llu"},
+    {"Bad: %llu (%.1f%%)", "失敗: %llu (%.1f%%)"},
+    {"Not captured: %llu", "対象外: %llu"},
+    {"Dropped: %llu", "破棄: %llu"},
+    {"On disk: %.1f MB", "ディスク: %.1f MB"},
+    {"Displayed: %llu of %llu", "表示中: %llu / %llu"},
+    {"Selected: 0x%zX..0x%zX (%zu bytes)", "選択: 0x%zX..0x%zX (%zu バイト)"},

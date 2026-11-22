@@ -29,6 +29,7 @@ set(sources
         src/spyglass/overlay/capture.cpp
         src/spyglass/overlay/export.cpp
         src/spyglass/overlay/filter.cpp
+        src/spyglass/overlay/i18n.cpp
         src/spyglass/overlay/navigate.cpp
         src/spyglass/overlay/pane/expert_window.cpp
         src/spyglass/overlay/pane/export_dialog.cpp
@@ -38,11 +39,14 @@ set(sources
         src/spyglass/overlay/pane/packet_bytes.cpp
         src/spyglass/overlay/pane/packet_details.cpp
         src/spyglass/overlay/pane/packet_list.cpp
+        src/spyglass/overlay/pane/settings_window.cpp
         src/spyglass/overlay/pane/statistics_window.cpp
         src/spyglass/overlay/pane/status_bar.cpp
         src/spyglass/overlay/pane/toolbar.cpp
         src/spyglass/overlay/report.cpp
+        src/spyglass/overlay/settings.cpp
         src/spyglass/overlay/store.cpp
+        src/spyglass/overlay/theme.cpp
         src/spyglass/overlay/view.cpp
         src/spyglass/overlay/windows/d3d11_backend.cpp
         src/spyglass/overlay/windows/d3d12_backend.cpp
