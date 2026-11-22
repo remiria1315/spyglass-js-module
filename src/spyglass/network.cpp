@@ -1,8 +1,6 @@
 #include "spyglass/network.h"
 
-#ifdef _WIN32
 #include <Windows.h>
-#endif
 
 #include <algorithm>
 #include <atomic>
@@ -52,19 +50,9 @@ constexpr bool kBreakFirstSubChunk = false;
 constexpr int kSubChunkPacket = 174;
 std::atomic_bool g_broke_one{false};
 
-// MSVC reverses the read overload pair and Itanium spends a second slot on the destructor, which
-// cancel; the write is a lone virtual, so it lands one slot later on Itanium
-#ifdef _WIN32
 constexpr std::size_t kPacketWriteSlot = 5;
-#else
-constexpr std::size_t kPacketWriteSlot = 6;
-#endif
 constexpr std::size_t kPacketReadSlot = 9;
-#ifdef _WIN32
 constexpr std::size_t kHandlerHandleSlot = 1;
-#else
-constexpr std::size_t kHandlerHandleSlot = 2;
-#endif
 
 std::mutex g_inject_mutex;
 std::atomic_size_t g_pending{0};

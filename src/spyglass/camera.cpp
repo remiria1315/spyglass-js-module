@@ -2,18 +2,15 @@
 
 #include <algorithm>
 #include <atomic>
-#include <numbers>
-
-#ifdef _WIN32
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <numbers>
 
 #include "spyglass/detail.h"
 #include "spyglass/hook.h"
 #include "spyglass/signature.h"
-#endif
 
 namespace spyglass {
 namespace {
@@ -27,8 +24,6 @@ std::optional<float> camera_fov()
     const auto degrees = g_fov_degrees.load(std::memory_order_relaxed);
     return degrees > 0.0F ? std::optional{degrees} : std::nullopt;
 }
-
-#ifdef _WIN32
 
 namespace {
 
@@ -109,16 +104,5 @@ void install_camera_hook()
     install_hook("FovSource::read", kCameraFov, detail::fp_cast(&FovSource::read), &g_read);
     install_hook("FovHost::getFov", kCameraFovHost, detail::fp_cast(&FovHost::getFov), &g_get_fov);
 }
-
-#else
-
-std::optional<CameraPose> camera_pose()
-{
-    return std::nullopt;
-}
-
-void install_camera_hook() {}
-
-#endif
 
 }  // namespace spyglass

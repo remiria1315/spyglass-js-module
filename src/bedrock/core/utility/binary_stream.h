@@ -83,11 +83,11 @@ private:
 
 protected:
     std::string owned_buffer_;  // +8
-    std::string_view view_;     // +40 windows, +32 android
+    std::string_view view_;     // +40
 
 private:
-    std::size_t read_pointer_{0};  // +56 windows, +48 android
-    bool has_overflowed_{false};   // +64 windows, +56 android
+    std::size_t read_pointer_{0};  // +56
+    bool has_overflowed_{false};   // +64
 };
 
 class BinaryStream : public ReadOnlyBinaryStream {

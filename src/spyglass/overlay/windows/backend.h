@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef _WIN32
-
 #include <dxgi.h>
 
 namespace spyglass {
@@ -21,5 +19,3 @@ public:
 };
 
 }  // namespace spyglass
-
-#endif

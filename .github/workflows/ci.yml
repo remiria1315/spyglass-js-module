@@ -16,32 +16,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: lukka/get-cmake@latest
-
       - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install LLVM 22+
         shell: pwsh
         run: |
-          winget install --id LLVM.LLVM --version 22.1.0 --silent --accept-package-agreements --accept-source-agreements
-          $llvmBin = "C:\Program Files\LLVM\bin"
-          if (Test-Path $llvmBin) {
-            "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          $installed = (Get-Command clang-cl -ErrorAction SilentlyContinue)
+          if ($installed -and [version]($installed.Version) -ge [version]"22.0") {
+            Write-Host "clang-cl $($installed.Version) is already installed"
+            exit 0
           }
-
-      - name: Check the toolchain
-        run: |
-          clang-cl --version
-          ninja --version
-
-      - name: Configure
-        run: cmake --preset relwithdebinfo-windows
+          winget install --id LLVM.LLVM --version 22.1.0 --silent --accept-package-agreements --accept-source-agreements
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Build
-        run: cmake --build --preset relwithdebinfo-windows
-
-      - name: Stage
-        run: cmake --install build/relwithdebinfo-windows --prefix dist
+        shell: bash
+        run: |
+          clang-cl --version
+          cmake --preset relwithdebinfo-windows
+          cmake --build --preset relwithdebinfo-windows
+          cmake --install build/relwithdebinfo-windows --prefix dist
 
       - uses: actions/upload-artifact@v4
         with:

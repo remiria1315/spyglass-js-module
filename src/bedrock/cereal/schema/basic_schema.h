@@ -147,11 +147,9 @@ public:
     };
 };
 
-#ifdef _WIN32
 static_assert(sizeof(UserPropertiesMap) == 72);
 static_assert(sizeof(BasicSchema::GetterDescriptor) == 0x10);
 static_assert(sizeof(BasicSchema::SetterDescriptor) == 0x18);
-#endif
 
 }  // namespace internal
 

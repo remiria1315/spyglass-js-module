@@ -10,7 +10,7 @@
 </p>
 
 [![CI](https://github.com/remiria1315/spyglass-js-module/actions/workflows/ci.yml/badge.svg)](https://github.com/remiria1315/spyglass-js-module/actions/workflows/ci.yml)
-[![Minecraft](https://img.shields.io/badge/minecraft-Bedrock_(Windows,_Linux)-black)](https://www.minecraft.net/en-us/download)
+[![Minecraft](https://img.shields.io/badge/minecraft-Bedrock_(Windows)-black)](https://www.minecraft.net/en-us/download)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 soygrass [![Discord](https://img.shields.io/discord/1230982180742631457?logo=discord&logoColor=white&color=5865F2)](https://discord.gg/xxgPuc2XN9)
 
@@ -34,7 +34,7 @@ soygrass [![Discord](https://img.shields.io/discord/1230982180742631457?logo=dis
 
 **キャプチャ (Capture)** — `Start`、`Stop`、`Restart`。送信パケットおよび受信パケットに対応し、長さの制限はありません。一時的なものであり、クライアントの終了とともに消滅します。クラッシュしたクライアントに残されたデータは、次回のインジェクト時にクリーンアップされます。キャプチャの設定は「編集 ＞ 設定...（Edit ▸ Settings...）」にあり、使用可能なメモリの設定や送信パケットのキャプチャ無効化を行えます。ステータスバーには、合計数、失敗の割合、選択範囲の広さ、表示されているパケット数、キャプチャのサイズ、およびゲームの進行を妨げないために破棄されたパケット数が表示されます。
 
-**設定 (Settings)** — 「編集 ＞ 設定...」で開きます。言語（English / 日本語）、ダークまたはライトのテーマ、表示サイズ、時刻の表示形式、色分け、自動スクロール、詳細・バイトペインの表示、キャプチャの設定を変更できます。設定は出力ディレクトリの `settings.json` に保存され、次回の起動時に復元されます。日本語の表示には、Windowsでは游ゴシック、メイリオ、MS ゴシックのいずれかを使用します。Androidではランチャーのフォントを使用します。
+**設定 (Settings)** — 「編集 ＞ 設定...」で開きます。言語（English / 日本語）、ダークまたはライトのテーマ、表示サイズ、時刻の表示形式、色分け、自動スクロール、詳細・バイトペインの表示、キャプチャの設定を変更できます。設定は出力ディレクトリの `settings.json` に保存され、次回の起動時に復元されます。日本語の表示には、游ゴシック、メイリオ、MS ゴシックのいずれかを使用します。
 
 **表示サイズ** — `Ctrl++` で拡大、`Ctrl+-` で縮小、`Ctrl+0` で標準に戻します。メニューバー、ツールバー、ステータスバー、余白を含むウィンドウ全体が拡大縮小されます。キーはSpyglassのウィンドウにフォーカスがあるときだけ効きます。
 
@@ -47,7 +47,7 @@ soygrass [![Discord](https://img.shields.io/discord/1230982180742631457?logo=dis
 - `Statistics` — セッションのキャプチャ内容、IDごとのバイト数の割合の内訳、パケット長の分布、および1秒あたりのパケット数またはバイト数のグラフ。
 - `File` — `Export Packets...`（すべてのパケット、選択したパケット、マークされたパケット、または範囲指定したパケットを、キャプチャ全体またはフィルター表示中のみを対象とし、サマリー行、詳細ツリー、バイト表現を任意の組み合わせでテキスト、CSV、JSON形式でエクスポート）。件数のカウントとサイズ見積もりの後、ゲームを停止させることなく、キャンセル可能なプログレスバーの裏で実行されます。`Export Selected Packet Bytes...` は選択範囲の生データ（未選択時はボディ全体）を書き出します。`Export Session Summary...` は合計値を書き出します。
 
-保存ダイアログは `%LOCALAPPDATA%\spyglass`（Linuxランチャーの場合は `~/.local/share/spyglass`）で開き、現在のディレクトリを表示し、フルパスの直接入力を受け付け、ファイルを上書きする前に警告を表示します。
+保存ダイアログは `%LOCALAPPDATA%\spyglass` で開き、現在のディレクトリを表示し、フルパスの直接入力を受け付け、ファイルを上書きする前に警告を表示します。
 
 ---
 

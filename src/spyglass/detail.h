@@ -54,18 +54,10 @@ auto fp_cast(Return (Class::*)(Arg...) const, void *address)
     return result;
 }
 
-#ifdef _WIN32
 template <typename Class, typename... Args>
 auto ctor_cast(void *address)
 {
     return reinterpret_cast<Class *(*)(Class *, Args...)>(address);
 }
-#else
-template <typename Class, typename... Args>
-auto ctor_cast(void *address)
-{
-    return reinterpret_cast<void (*)(Class *, Args...)>(address);
-}
-#endif
 
 }  // namespace spyglass::detail

@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef _WIN32
-
 #include <memory>
 
 #include <d3d12.h>
@@ -49,5 +47,3 @@ private:
 };
 
 }  // namespace spyglass
-
-#endif

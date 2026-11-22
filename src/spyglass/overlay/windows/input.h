@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef _WIN32
-
 #include <atomic>
 #include <bitset>
 #include <cstdint>
@@ -47,5 +45,3 @@ private:
 };
 
 }  // namespace spyglass
-
-#endif

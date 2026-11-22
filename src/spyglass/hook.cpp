@@ -11,12 +11,7 @@
 
 #include <funchook.h>
 
-#ifdef _WIN32
 #include <Windows.h>
-#else
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
 
 #include "spyglass/error.h"
 #include "spyglass/pattern.h"
@@ -63,22 +58,12 @@ std::mutex g_mutex;
 
 bool write_slot(void **slot, void *value)
 {
-#ifdef _WIN32
     DWORD previous = 0;
     if (VirtualProtect(slot, sizeof(void *), PAGE_READWRITE, &previous) == 0) {
         return false;
     }
     __atomic_store_n(slot, value, __ATOMIC_RELEASE);
     VirtualProtect(slot, sizeof(void *), previous, &previous);
-#else
-    const auto page = static_cast<std::uintptr_t>(sysconf(_SC_PAGESIZE));
-    auto *const start = reinterpret_cast<void *>(reinterpret_cast<std::uintptr_t>(slot) & ~(page - 1));
-    if (mprotect(start, page, PROT_READ | PROT_WRITE) != 0) {
-        return false;
-    }
-    __atomic_store_n(slot, value, __ATOMIC_RELEASE);
-    mprotect(start, page, PROT_READ);
-#endif
     return true;
 }
 

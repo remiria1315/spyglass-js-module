@@ -5,14 +5,12 @@
 #include "bedrock/version.h"
 
 // Cut against Minecraft.Windows.exe 1.26.40.5, 1.26.44.3, 1.26.50.27,
-// 1.26.51.1, 1.26.60.5, 1.26.60.21, 1.26.60.30 and 1.26.70.21, and against the x86_64
-// libminecraftpe.so of the 1.26.44.3 Android release. None of them name these
-// functions at runtime. The Windows client carries RTTI for webrtc only, and
-// the Android .dynsym drops every game symbol, so both are located the same
-// way: from the strings that survive the strip, and from the exception table
-// function index that turns an address back into the function holding it. That
-// index is .pdata on Windows and .eh_frame_hdr on Android. Follow the recipes
-// again after a client update. Do not widen a pattern to make it match.
+// 1.26.51.1, 1.26.60.5, 1.26.60.21, 1.26.60.30 and 1.26.70.21. None of them
+// name these functions at runtime. The Windows client carries RTTI for webrtc
+// only, so they are located from the strings that survive the strip, and from
+// the exception table function index that turns an address back into the
+// function holding it. That index is .pdata. Follow the recipes again after a
+// client update. Do not widen a pattern to make it match.
 //
 // The release and preview clients are separate builds, and a pattern cut
 // against one must never be scanned against the other, so a build targets one
@@ -30,13 +28,11 @@
 // body to hook, which is what that walk replaces. createPacket is therefore the
 // single thing capture depends on, in both directions.
 //
-// 1. find the string "readNoHeader failed! packetId: {}". it is unique on both
-// platforms, in
-//    .rdata on Windows and .rodata on Android
+// 1. find the string "readNoHeader failed! packetId: {}". it is unique, in
+//    .rdata
 // 2. it has one lea xref, inside the outlined addFrameToError that a failed
 // read builds its error
-//    frame with. that helper is about 0x1d0 bytes on both platforms and does
-//    nothing else
+//    frame with. that helper is about 0x1d0 bytes and does nothing else
 // 3. the helper has exactly one caller, the NetworkSystem::runEvents packet
 // lambda. it is 0x251f
 //    bytes on 1.26.40.5, 0x2080 on 1.26.44.3 and 0x1ef3 on 1.26.50.27, and it
@@ -69,8 +65,7 @@
 // 1.26.60.5 serialization call goes through the control flow guard dispatcher.
 //
 // MouseDevice::feed is where every mouse channel meets, so the overlay stops
-// the game's mouse there rather than at one transport. Windows only: the
-// launcher owns input on Android.
+// the game's mouse there rather than at one transport.
 //
 // 1. the window procedure's own mouse handlers are dead whenever the GameInput
 // runtime is up. each
@@ -103,8 +98,6 @@ struct Signatures {
 const Signatures &signatures();
 
 void verify_client();
-
-#ifdef _WIN32
 
 #if MINECRAFT_PREVIEW
 
@@ -201,22 +194,5 @@ constexpr std::string_view kCameraFovHost =
     "56 57 53 48 83 EC 60 44 0F 29 44 24 50 0F 29 7C 24 40 0F 29 74 24 30 44 89 "
     "C3 0F 28 F1 48 89 CE 45 84 C0 0F 84 ? ? ? ? 48 8B 86 80 11 00 00 48 8B 88 "
     "08 04 00 00";
-
-#else
-
-#if MINECRAFT_PREVIEW ||                                                       \
-    MINECRAFT_VERSION_HEX >= MINECRAFT_VERSION(1, 26, 50, 0)
-#error "the Android set is cut against the 1.26.4x release client only"
-#endif
-
-// 1.26.44.3, and the rest of 1.26.4x
-constexpr Signatures kClient{
-    .name = MINECRAFT_CLIENT,
-    .create_packet = "55 48 89 E5 53 50 48 89 FB 81 FE 5F 01 00 00 77 12 89 F0 "
-                     "48 8D 0D ? ? ? ? 48 63 04 81 48 01 C8 "
-                     "FF E0 0F 57 C0 0F 11 03",
-};
-
-#endif
 
 } // namespace spyglass

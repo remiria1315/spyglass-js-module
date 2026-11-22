@@ -1,5 +1,3 @@
-#ifdef _WIN32
-
 #include "spyglass/overlay/windows/mouse.h"
 
 #include <cstdint>
@@ -34,5 +32,3 @@ void install_mouse_hook()
 }
 
 }  // namespace spyglass
-
-#endif

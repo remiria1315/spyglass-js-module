@@ -150,37 +150,3 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "v${{ inputs.version }}" "spyglass-v${{ inputs.version }}-windows-x64.zip" --clobber
-
-  android:
-    name: Android
-    if: ${{ !inputs.dry_run }}
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: v${{ inputs.version }}
-
-      - uses: lukka/get-cmake@latest
-
-      - name: Check the toolchain
-        run: test -d "$ANDROID_NDK_ROOT" || { echo "ANDROID_NDK_ROOT is not set"; exit 1; }
-
-      - name: Build
-        run: |
-          cmake --preset relwithdebinfo-android
-          cmake --build --preset relwithdebinfo-android
-
-      - name: Stage
-        run: cmake --install build/relwithdebinfo-android --prefix dist
-
-      - name: Package
-        run: cd dist && zip -r "../spyglass-v${{ inputs.version }}-linux-x64.zip" .
-
-      - name: Upload release asset
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v${{ inputs.version }}" "spyglass-v${{ inputs.version }}-linux-x64.zip" --clobber

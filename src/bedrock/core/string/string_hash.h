@@ -15,8 +15,4 @@ private:
     const HashedString *mLastMatch{nullptr};
 };
 
-#ifdef _WIN32
 static_assert(sizeof(HashedString) == 48);
-#else
-static_assert(sizeof(HashedString) == 40);
-#endif

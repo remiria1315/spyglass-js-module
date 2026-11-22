@@ -1,21 +1,18 @@
 cmake_minimum_required(VERSION 3.28)
 project(spyglass VERSION 0.5.6 LANGUAGES CXX)
 
-if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
-    set(default_clients "1.26.50;1.26.60;1.26.70.21")
-elseif (ANDROID AND ANDROID_ABI STREQUAL "x86_64")
-    set(default_clients "1.26.40")
-else ()
-    message(FATAL_ERROR "spyglass targets 64-bit Windows, or Android x86_64 for the Linux launcher")
+if (NOT (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8))
+    message(FATAL_ERROR "spyglass targets 64-bit Windows")
 endif ()
+
+add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(MINECRAFT_CLIENTS "${default_clients}" CACHE STRING
-        "Minecraft client builds to target, e.g. 1.26.40;1.26.60.21")
+set(MINECRAFT_CLIENTS "1.26.50;1.26.60;1.26.70.21" CACHE STRING
+        "Minecraft client builds to target, e.g. 1.26.50;1.26.60.21")
 
 add_subdirectory(third_party)
 
@@ -28,8 +25,6 @@ set(sources
         src/spyglass/install.cpp
         src/spyglass/main.cpp
         src/spyglass/network.cpp
-        src/spyglass/overlay/android/overlay.cpp
-        src/spyglass/overlay/android/symbol.cpp
         src/spyglass/overlay/bytes.cpp
         src/spyglass/overlay/capture.cpp
         src/spyglass/overlay/export.cpp
@@ -72,11 +67,7 @@ foreach (client IN LISTS MINECRAFT_CLIENTS)
     endif ()
     set(version "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
     set(tag "${version}")
-    if (WIN32)
-        set(name "Windows ${tag}")
-    else ()
-        set(name "Android x86_64 ${tag}")
-    endif ()
+    set(name "Windows ${tag}")
     if (CMAKE_MATCH_4)
         set(preview 1)
         set(build ${CMAKE_MATCH_5})
@@ -109,33 +100,19 @@ foreach (client IN LISTS MINECRAFT_CLIENTS)
             imgui
             libhat::libhat
             nlohmann_json::nlohmann_json
-            qjs)
+            qjs
+            shell32 version winhttp)
 
-    if (ANDROID)
-        target_link_libraries(${target} PRIVATE log)
-        set(mod_dir spyglass-${PROJECT_VERSION}-${tag})
-        file(CONFIGURE OUTPUT ${mod_dir}/mod.json CONTENT
-                "{ \"name\": \"spyglass\", \"version\": \"${PROJECT_VERSION}\", \"arch\": \"${ANDROID_ABI}\" }\n")
-        install(TARGETS ${target} LIBRARY DESTINATION ${mod_dir})
-        install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${mod_dir}/mod.json DESTINATION ${mod_dir})
-    else ()
-        install(TARGETS ${target} RUNTIME DESTINATION .)
-    endif ()
-
-    if (WIN32)
-        target_link_libraries(${target} PRIVATE shell32 version winhttp)
-        install(FILES $<TARGET_PDB_FILE:${target}> DESTINATION . OPTIONAL)
-    endif ()
+    install(TARGETS ${target} RUNTIME DESTINATION .)
+    install(FILES $<TARGET_PDB_FILE:${target}> DESTINATION . OPTIONAL)
 endforeach ()
 
 install(FILES LICENSE README.md DESTINATION .)
 
-if (WIN32)
-    add_executable(spyglass_injector src/injector/main.cpp)
-    target_compile_definitions(spyglass_injector PRIVATE SPYGLASS_VERSION="${PROJECT_VERSION}")
-    target_link_libraries(spyglass_injector PRIVATE advapi32 shell32 version)
-    target_link_options(spyglass_injector PRIVATE /DEBUG:NONE)
-    set_target_properties(spyglass_injector PROPERTIES OUTPUT_NAME spyglass)
+add_executable(spyglass_injector src/injector/main.cpp)
+target_compile_definitions(spyglass_injector PRIVATE SPYGLASS_VERSION="${PROJECT_VERSION}")
+target_link_libraries(spyglass_injector PRIVATE advapi32 shell32 version)
+target_link_options(spyglass_injector PRIVATE /DEBUG:NONE)
+set_target_properties(spyglass_injector PROPERTIES OUTPUT_NAME spyglass)
 
-    install(TARGETS spyglass_injector RUNTIME DESTINATION .)
-endif ()
+install(TARGETS spyglass_injector RUNTIME DESTINATION .)
