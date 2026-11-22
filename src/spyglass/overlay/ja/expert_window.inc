@@ -1,0 +1,5 @@
+    {"Spyglass: expert information", "Spyglass: エキスパート情報"},
+    {"no failed decodes captured", "デコード失敗はまだありません"},
+    {"Reason", "原因"},
+    {"First", "最初"},
+    {"packets %llu to %llu", "パケット %llu ～ %llu"},

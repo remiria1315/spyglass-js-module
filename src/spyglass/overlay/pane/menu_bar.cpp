@@ -14,6 +14,7 @@
 #include "spyglass/overlay/capture.h"
 #include "spyglass/overlay/export.h"
 #include "spyglass/overlay/filter.h"
+#include "spyglass/overlay/i18n.h"
 #include "spyglass/overlay/navigate.h"
 #include "spyglass/overlay/options.h"
 #include "spyglass/overlay/pane/packet_list.h"
@@ -25,10 +26,6 @@
 namespace spyglass {
 namespace {
 
-constexpr float kFontScaleStep = 0.1F;
-constexpr float kSmallestFontScale = 0.5F;
-constexpr float kLargestFontScale = 3.0F;
-
 constexpr std::array<std::pair<const char *, StatisticsTab>, 4> kStatisticsTabs{{
     {"Capture Properties", StatisticsTab::Properties},
     {"Packet Types", StatisticsTab::Types},
@@ -36,9 +33,10 @@ constexpr std::array<std::pair<const char *, StatisticsTab>, 4> kStatisticsTabs{
     {"I/O Graph", StatisticsTab::Graph},
 }};
 
-void time_format(ViewOptions &options, const char *label, const TimeFormat format)
+void time_format(ViewOptions &options, const TimeFormat format)
 {
-    if (ImGui::MenuItem(label, nullptr, options.time_format == format)) {
+    if (ImGui::MenuItem(tr_label(kTimeFormatNames[static_cast<std::size_t>(format)]), nullptr,
+                        options.time_format == format)) {
         options.time_format = format;
     }
 }
@@ -53,30 +51,30 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
 
     auto open_goto = false;
 
-    if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("Export Packets...")) {
+    if (ImGui::BeginMenu(tr_label("File"))) {
+        if (ImGui::MenuItem(tr_label("Export Packets..."))) {
             options.export_dialog = true;
             options.export_command = ExportCommand::Packets;
         }
-        if (ImGui::MenuItem("Export Selected Packet Bytes...", nullptr, false, capture.selected() != 0)) {
+        if (ImGui::MenuItem(tr_label("Export Selected Packet Bytes..."), nullptr, false, capture.selected() != 0)) {
             options.export_dialog = true;
             options.export_command = ExportCommand::SelectedBytes;
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Export Session Summary...")) {
+        if (ImGui::MenuItem(tr_label("Export Session Summary..."))) {
             options.export_dialog = true;
             options.export_command = ExportCommand::Summary;
         }
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Edit")) {
-        ImGui::MenuItem("Find Packet", nullptr, &options.find_bar);
+    if (ImGui::BeginMenu(tr_label("Edit"))) {
+        ImGui::MenuItem(tr_label("Find Packet"), nullptr, &options.find_bar);
 
         ImGui::Separator();
         const auto selected = capture.selected();
         const auto marked = list.marks.contains(selected);
-        if (ImGui::MenuItem(marked ? "Unmark Packet" : "Mark Packet", nullptr, false, selected != 0)) {
+        if (ImGui::MenuItem(tr_label(marked ? "Unmark Packet" : "Mark Packet"), nullptr, false, selected != 0)) {
             if (marked) {
                 list.marks.erase(selected);
             }
@@ -84,7 +82,7 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
                 list.marks.insert(selected);
             }
         }
-        if (ImGui::MenuItem("Mark All Displayed")) {
+        if (ImGui::MenuItem(tr_label("Mark All Displayed"))) {
             capture.visit(0, [&](const Record &record) {
                 if (filter.matches(record)) {
                     list.marks.insert(record.number);
@@ -92,40 +90,40 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
                 return true;
             });
         }
-        if (ImGui::MenuItem("Unmark All", nullptr, false, !list.marks.empty())) {
+        if (ImGui::MenuItem(tr_label("Unmark All"), nullptr, false, !list.marks.empty())) {
             list.marks.clear();
         }
-        if (ImGui::MenuItem("Next Mark", nullptr, false, !list.marks.empty())) {
+        if (ImGui::MenuItem(tr_label("Next Mark"), nullptr, false, !list.marks.empty())) {
             jump(capture, filter, list, Jump::NextMark);
         }
-        if (ImGui::MenuItem("Previous Mark", nullptr, false, !list.marks.empty())) {
+        if (ImGui::MenuItem(tr_label("Previous Mark"), nullptr, false, !list.marks.empty())) {
             jump(capture, filter, list, Jump::PreviousMark);
         }
 
         ImGui::Separator();
         const auto referenced = list.reference == selected;
-        if (ImGui::MenuItem(referenced ? "Unset Time Reference" : "Set Time Reference", nullptr, false,
+        if (ImGui::MenuItem(tr_label(referenced ? "Unset Time Reference" : "Set Time Reference"), nullptr, false,
                             selected != 0)) {
             list.reference = referenced ? 0 : selected;
         }
-        if (ImGui::MenuItem("Unset All Time References", nullptr, false, list.reference != 0)) {
+        if (ImGui::MenuItem(tr_label("Unset All Time References"), nullptr, false, list.reference != 0)) {
             list.reference = 0;
         }
 
         ImGui::Separator();
-        if (ImGui::BeginMenu("Copy")) {
-            if (ImGui::MenuItem("Row", nullptr, false, selected != 0)) {
+        if (ImGui::BeginMenu(tr_label("Copy"))) {
+            if (ImGui::MenuItem(tr_label("Row"), nullptr, false, selected != 0)) {
                 if (const auto selection = capture.selected_details()) {
                     ImGui::SetClipboardText(report_row(selection->record).c_str());
                 }
             }
-            if (ImGui::MenuItem("Packet Details", nullptr, false, selected != 0)) {
+            if (ImGui::MenuItem(tr_label("Packet Details"), nullptr, false, selected != 0)) {
                 if (const auto selection = capture.selected_details()) {
                     ImGui::SetClipboardText(report_details(*selection, true).c_str());
                 }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("All Displayed Rows")) {
+            if (ImGui::MenuItem(tr_label("All Displayed Rows"))) {
                 std::string text;
                 capture.visit(0, [&](const Record &record) {
                     if (filter.matches(record)) {
@@ -136,7 +134,7 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
                 });
                 ImGui::SetClipboardText(text.c_str());
             }
-            if (ImGui::MenuItem("All Displayed Rows as CSV")) {
+            if (ImGui::MenuItem(tr_label("All Displayed Rows as CSV"))) {
                 std::string text{kCsvHeader};
                 capture.visit(0, [&](const Record &record) {
                     if (filter.matches(record)) {
@@ -148,71 +146,74 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
             }
             ImGui::EndMenu();
         }
+
+        ImGui::Separator();
+        ImGui::MenuItem(tr_label("Settings..."), nullptr, &options.settings_window);
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("View")) {
-        ImGui::MenuItem("Packet Details", nullptr, &options.details_pane);
-        ImGui::MenuItem("Packet Bytes", nullptr, &options.bytes_pane);
+    if (ImGui::BeginMenu(tr_label("View"))) {
+        ImGui::MenuItem(tr_label("Packet Details"), nullptr, &options.details_pane);
+        ImGui::MenuItem(tr_label("Packet Bytes"), nullptr, &options.bytes_pane);
 
         ImGui::Separator();
-        if (ImGui::BeginMenu("Time Display Format")) {
-            time_format(options, "Seconds Since First Packet", TimeFormat::SinceFirst);
-            time_format(options, "Seconds Since Previous Captured Packet", TimeFormat::SincePrevious);
-            time_format(options, "Seconds Since Previous Displayed Packet", TimeFormat::SincePreviousDisplayed);
-            time_format(options, "Time of Day", TimeFormat::TimeOfDay);
+        if (ImGui::BeginMenu(tr_label("Time Display Format"))) {
+            time_format(options, TimeFormat::SinceFirst);
+            time_format(options, TimeFormat::SincePrevious);
+            time_format(options, TimeFormat::SincePreviousDisplayed);
+            time_format(options, TimeFormat::TimeOfDay);
             ImGui::EndMenu();
         }
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Zoom In")) {
-            options.font_scale = std::min(kLargestFontScale, options.font_scale + kFontScaleStep);
+        if (ImGui::MenuItem(tr_label("Zoom In"), "Ctrl++")) {
+            step_zoom(options, 1);
         }
-        if (ImGui::MenuItem("Zoom Out")) {
-            options.font_scale = std::max(kSmallestFontScale, options.font_scale - kFontScaleStep);
+        if (ImGui::MenuItem(tr_label("Zoom Out"), "Ctrl+-")) {
+            step_zoom(options, -1);
         }
-        if (ImGui::MenuItem("Normal Size")) {
+        if (ImGui::MenuItem(tr_label("Normal Size"), "Ctrl+0")) {
             options.font_scale = 1.0F;
         }
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Expand All", nullptr, false, options.details_pane)) {
+        if (ImGui::MenuItem(tr_label("Expand All"), nullptr, false, options.details_pane)) {
             options.expand_details = true;
         }
-        if (ImGui::MenuItem("Collapse All", nullptr, false, options.details_pane)) {
+        if (ImGui::MenuItem(tr_label("Collapse All"), nullptr, false, options.details_pane)) {
             options.collapse_details = true;
         }
 
         ImGui::Separator();
-        ImGui::MenuItem("Colorize Packet List", nullptr, &options.colorize);
-        if (ImGui::MenuItem("Resize Columns to Fit")) {
+        ImGui::MenuItem(tr_label("Colorize Packet List"), nullptr, &options.colorize);
+        if (ImGui::MenuItem(tr_label("Resize Columns to Fit"))) {
             options.resize_columns = true;
         }
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Show Packet in New Window", nullptr, false, capture.selected() != 0)) {
+        if (ImGui::MenuItem(tr_label("Show Packet in New Window"), nullptr, false, capture.selected() != 0)) {
             options.detach = capture.selected();
         }
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Go")) {
-        if (ImGui::MenuItem("Go to Packet...")) {
+    if (ImGui::BeginMenu(tr_label("Go"))) {
+        if (ImGui::MenuItem(tr_label("Go to Packet..."))) {
             open_goto = true;
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("First Packet")) {
+        if (ImGui::MenuItem(tr_label("First Packet"))) {
             jump(capture, filter, list, Jump::First);
         }
-        if (ImGui::MenuItem("Last Packet")) {
+        if (ImGui::MenuItem(tr_label("Last Packet"))) {
             jump(capture, filter, list, Jump::Last);
         }
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Next Failed Decode")) {
+        if (ImGui::MenuItem(tr_label("Next Failed Decode"))) {
             jump(capture, filter, list, Jump::NextFailed);
         }
-        if (ImGui::MenuItem("Previous Failed Decode")) {
+        if (ImGui::MenuItem(tr_label("Previous Failed Decode"))) {
             jump(capture, filter, list, Jump::PreviousFailed);
         }
 
@@ -220,18 +221,18 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
         char next[192];
         char previous[192];
         if (!selected.name.empty()) {
-            std::snprintf(next, sizeof(next), "Next %.*s", static_cast<int>(selected.name.size()),
+            std::snprintf(next, sizeof(next), tr("Next %.*s"), static_cast<int>(selected.name.size()),
                           selected.name.data());
-            std::snprintf(previous, sizeof(previous), "Previous %.*s", static_cast<int>(selected.name.size()),
+            std::snprintf(previous, sizeof(previous), tr("Previous %.*s"), static_cast<int>(selected.name.size()),
                           selected.name.data());
         }
         else if (selected.id >= 0) {
-            std::snprintf(next, sizeof(next), "Next id %d", selected.id);
-            std::snprintf(previous, sizeof(previous), "Previous id %d", selected.id);
+            std::snprintf(next, sizeof(next), tr("Next id %d"), selected.id);
+            std::snprintf(previous, sizeof(previous), tr("Previous id %d"), selected.id);
         }
         else {
-            std::snprintf(next, sizeof(next), "Next of This Packet");
-            std::snprintf(previous, sizeof(previous), "Previous of This Packet");
+            std::snprintf(next, sizeof(next), "%s", tr("Next of This Packet"));
+            std::snprintf(previous, sizeof(previous), "%s", tr("Previous of This Packet"));
         }
         ImGui::BeginDisabled(selected.id < 0);
         if (ImGui::MenuItem(next)) {
@@ -243,34 +244,34 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
         ImGui::EndDisabled();
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Back", nullptr, false, list.history_at > 0)) {
+        if (ImGui::MenuItem(tr_label("Back"), nullptr, false, list.history_at > 0)) {
             jump(capture, filter, list, Jump::Back);
         }
-        if (ImGui::MenuItem("Forward", nullptr, false, list.history_at + 1 < list.history.size())) {
+        if (ImGui::MenuItem(tr_label("Forward"), nullptr, false, list.history_at + 1 < list.history.size())) {
             jump(capture, filter, list, Jump::Forward);
         }
 
         ImGui::Separator();
-        if (ImGui::MenuItem("Auto Scroll", nullptr, &options.auto_scroll) && options.auto_scroll) {
+        if (ImGui::MenuItem(tr_label("Auto Scroll"), nullptr, &options.auto_scroll) && options.auto_scroll) {
             jump(capture, filter, list, Jump::Last);
         }
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Analyze")) {
-        ImGui::MenuItem("Expert Information", nullptr, &options.expert_window);
-        ImGui::MenuItem("Interpret Selection", nullptr, &options.inspector);
+    if (ImGui::BeginMenu(tr_label("Analyze"))) {
+        ImGui::MenuItem(tr_label("Expert Information"), nullptr, &options.expert_window);
+        ImGui::MenuItem(tr_label("Interpret Selection"), nullptr, &options.inspector);
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Modules")) {
-        ImGui::MenuItem("Module Manager", nullptr, &options.modules_window);
+    if (ImGui::BeginMenu(tr_label("Modules"))) {
+        ImGui::MenuItem(tr_label("Module Manager"), nullptr, &options.modules_window);
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Statistics")) {
+    if (ImGui::BeginMenu(tr_label("Statistics"))) {
         for (const auto &[label, wanted] : kStatisticsTabs) {
-            if (ImGui::MenuItem(label)) {
+            if (ImGui::MenuItem(tr_label(label))) {
                 options.statistics_window = true;
                 options.statistics_select = true;
                 options.statistics_tab = wanted;
@@ -279,33 +280,33 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Capture")) {
-        if (ImGui::MenuItem("Start", nullptr, false, !capture.running())) {
+    if (ImGui::BeginMenu(tr_label("Capture"))) {
+        if (ImGui::MenuItem(tr_label("Start"), nullptr, false, !capture.running())) {
             capture.start();
         }
-        if (ImGui::MenuItem("Stop", nullptr, false, capture.running())) {
+        if (ImGui::MenuItem(tr_label("Stop"), nullptr, false, capture.running())) {
             capture.stop();
         }
-        if (ImGui::MenuItem("Restart")) {
+        if (ImGui::MenuItem(tr_label("Restart"))) {
             capture.restart();
         }
         ImGui::Separator();
-        ImGui::MenuItem("Options", nullptr, &options.capture_options_window);
-        ImGui::MenuItem("Filter", nullptr, &options.filter_window);
+        ImGui::MenuItem(tr_label("Options"), nullptr, &options.settings_window);
+        ImGui::MenuItem(tr_label("Filter"), nullptr, &options.filter_window);
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Help")) {
+    if (ImGui::BeginMenu(tr_label("Help"))) {
         const auto failures = errors().size();
         char label[64];
         if (failures == 0) {
-            std::snprintf(label, sizeof(label), "Errors");
+            std::snprintf(label, sizeof(label), "%s", tr("Errors"));
         }
         else {
-            std::snprintf(label, sizeof(label), "Errors (%zu)", failures);
+            std::snprintf(label, sizeof(label), tr("Errors (%zu)"), failures);
         }
         ImGui::MenuItem(label, nullptr, &options.errors_window, failures != 0);
-        ImGui::MenuItem("About Spyglass", nullptr, &options.about_window);
+        ImGui::MenuItem(tr_label("About Spyglass"), nullptr, &options.about_window);
         ImGui::EndMenu();
     }
 
@@ -313,18 +314,18 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
 
     if (open_goto) {
         options.goto_number[0] = '\0';
-        ImGui::OpenPopup("Go to Packet");
+        ImGui::OpenPopup(tr_label("Go to Packet"));
     }
-    if (ImGui::BeginPopupModal("Go to Packet", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::BeginPopupModal(tr_label("Go to Packet"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         if (ImGui::IsWindowAppearing()) {
             ImGui::SetKeyboardFocusHere();
         }
         ImGui::SetNextItemWidth(160.0F);
         auto go = ImGui::InputText("##number", options.goto_number, sizeof(options.goto_number),
                                    ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_EnterReturnsTrue);
-        go = ImGui::Button("Go") || go;
+        go = ImGui::Button(tr_label("Go")) || go;
         ImGui::SameLine();
-        const auto cancel = ImGui::Button("Cancel");
+        const auto cancel = ImGui::Button(tr_label("Cancel"));
         if (go) {
             if (const auto number = std::strtoull(options.goto_number, nullptr, 10); number != 0) {
                 show_packet(capture, list, number);
@@ -337,54 +338,22 @@ void draw_menu_bar(Capture &capture, Filter &filter, PacketList &list, ViewOptio
     }
 }
 
-void draw_capture_options(Capture &capture, bool &open)
-{
-    if (ImGui::Begin("Spyglass: capture options", &open, ImGuiWindowFlags_AlwaysAutoResize)) {
-        constexpr std::size_t kBlockBytes = kBlockEntries * sizeof(Entry);
-        auto settings = capture.options();
-        auto index = static_cast<int>((settings.store.resident_blocks * kBlockBytes) / (1024 * 1024));
-        auto queue = static_cast<int>(settings.store.queue_bytes / (1024 * 1024));
-
-        ImGui::TextColored(kMuted, "Packets stream to a capture file and are read back as they are shown, so\n"
-                                   "nothing is dropped for age and memory does not grow with the session.");
-        ImGui::TextColored(kMuted, "%s", capture.store().path().string().c_str());
-
-        ImGui::Separator();
-        ImGui::SetNextItemWidth(160.0F);
-        ImGui::InputInt("Index cache (MB)", &index, 16, 128);
-        ImGui::SetNextItemWidth(160.0F);
-        ImGui::InputInt("Writer queue (MB)", &queue, 1, 8);
-        ImGui::TextColored(kMuted, "The queue holds packets the writer has not reached yet. A packet that\n"
-                                   "arrives when it is full is dropped and counted in the status bar.");
-
-        ImGui::Separator();
-        ImGui::Checkbox("Capture sent packets", &settings.outbound);
-        ImGui::TextColored(kMuted, "Sent packets are never stored while this is off.");
-
-        settings.store.resident_blocks =
-            std::max<std::size_t>(2, (static_cast<std::size_t>(std::max(index, 1)) * 1024 * 1024) / kBlockBytes);
-        settings.store.queue_bytes = static_cast<std::size_t>(std::max(queue, 1)) * 1024 * 1024;
-        capture.set_options(settings);
-    }
-    ImGui::End();
-}
-
 void draw_about_window(bool &open)
 {
-    if (ImGui::Begin("Spyglass: about", &open, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::Begin(tr_label("Spyglass: about"), &open, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Spyglass %s", SPYGLASS_VERSION);
-        ImGui::TextColored(kMuted, "A packet capture that runs inside the Minecraft: Bedrock client");
+        ImGui::TextColored(palette().muted, tr("A packet capture that runs inside the Minecraft: Bedrock client"));
 
         ImGui::Separator();
         const auto &signature = signatures();
-        ImGui::Text("Client: %.*s", static_cast<int>(signature.name.size()), signature.name.data());
+        ImGui::Text(tr("Client: %.*s"), static_cast<int>(signature.name.size()), signature.name.data());
         const auto &names = packet_names();
-        ImGui::Text("Highest packet id: %zu", names.empty() ? 0 : names.size() - 1);
+        ImGui::Text(tr("Highest packet id: %zu"), names.empty() ? 0 : names.size() - 1);
         std::size_t named = 0;
         for (const auto &name : names) {
             named += name.empty() ? 0 : 1;
         }
-        ImGui::Text("Packets named: %zu", named);
+        ImGui::Text(tr("Packets named: %zu"), named);
 
         ImGui::Separator();
         const auto &hooked = hooks();

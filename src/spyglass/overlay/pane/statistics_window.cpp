@@ -12,6 +12,7 @@
 #include "spyglass/core/clock.h"
 #include "spyglass/network.h"
 #include "spyglass/overlay/capture.h"
+#include "spyglass/overlay/i18n.h"
 #include "spyglass/overlay/options.h"
 #include "spyglass/overlay/theme.h"
 
@@ -33,28 +34,28 @@ void draw_properties(const Statistics &statistics)
 
     if (statistics.wall_start > 0.0) {
         const auto parts = local_time(static_cast<std::time_t>(statistics.wall_start));
-        ImGui::Text("Started: %04d-%02d-%02d %02d:%02d:%02d", parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday,
+        ImGui::Text(tr("Started: %04d-%02d-%02d %02d:%02d:%02d"), parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday,
                     parts.tm_hour, parts.tm_min, parts.tm_sec);
     }
-    ImGui::Text("Duration: %.3f s", statistics.duration);
+    ImGui::Text(tr("Duration: %.3f s"), statistics.duration);
 
     ImGui::Separator();
-    ImGui::Text("Packets captured: %llu", static_cast<unsigned long long>(statistics.total));
-    ImGui::TextColored(statistics.bad == 0 ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : kBadPacket,
-                       "Failed decodes: %llu (%.1f%%)", static_cast<unsigned long long>(statistics.bad), share);
-    ImGui::Text("Packets on disk: %llu (%llu bytes)", static_cast<unsigned long long>(statistics.written),
+    ImGui::Text(tr("Packets captured: %llu"), static_cast<unsigned long long>(statistics.total));
+    ImGui::TextColored(statistics.bad == 0 ? ImGui::GetStyleColorVec4(ImGuiCol_Text) : palette().bad_packet,
+                       tr("Failed decodes: %llu (%.1f%%)"), static_cast<unsigned long long>(statistics.bad), share);
+    ImGui::Text(tr("Packets on disk: %llu (%llu bytes)"), static_cast<unsigned long long>(statistics.written),
                 static_cast<unsigned long long>(statistics.stored_bytes));
-    ImGui::Text("Numbers: %llu to %llu", static_cast<unsigned long long>(statistics.oldest),
+    ImGui::Text(tr("Numbers: %llu to %llu"), static_cast<unsigned long long>(statistics.oldest),
                 static_cast<unsigned long long>(statistics.newest));
     if (statistics.dropped != 0) {
-        ImGui::TextColored(kBadPacket, "Dropped by the writer: %llu",
+        ImGui::TextColored(palette().bad_packet, tr("Dropped by the writer: %llu"),
                            static_cast<unsigned long long>(statistics.dropped));
     }
 
     ImGui::Separator();
-    ImGui::Text("Received: %llu packets, %zu bytes", static_cast<unsigned long long>(statistics.inbound),
+    ImGui::Text(tr("Received: %llu packets, %zu bytes"), static_cast<unsigned long long>(statistics.inbound),
                 statistics.inbound_bytes);
-    ImGui::Text("Sent: %llu packets, %zu bytes", static_cast<unsigned long long>(statistics.outbound),
+    ImGui::Text(tr("Sent: %llu packets, %zu bytes"), static_cast<unsigned long long>(statistics.outbound),
                 statistics.outbound_bytes);
 }
 
@@ -73,11 +74,12 @@ void draw_types(const Statistics &statistics)
     }
 
     ImGui::TableSetupScrollFreeze(0, 1);
-    ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthStretch, 0.5F);
-    ImGui::TableSetupColumn("Packet", ImGuiTableColumnFlags_WidthStretch, 2.5F);
-    ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort, 0.8F);
-    ImGui::TableSetupColumn("Bytes", ImGuiTableColumnFlags_WidthStretch, 1.0F);
-    ImGui::TableSetupColumn("Share", ImGuiTableColumnFlags_WidthStretch, 0.8F);
+    ImGui::TableSetupColumn(tr_label("Id"), ImGuiTableColumnFlags_WidthStretch, 0.5F);
+    ImGui::TableSetupColumn(tr_label("Packet"), ImGuiTableColumnFlags_WidthStretch, 2.5F);
+    ImGui::TableSetupColumn(tr_label("Count"), ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort,
+                            0.8F);
+    ImGui::TableSetupColumn(tr_label("Bytes"), ImGuiTableColumnFlags_WidthStretch, 1.0F);
+    ImGui::TableSetupColumn(tr_label("Share"), ImGuiTableColumnFlags_WidthStretch, 0.8F);
     ImGui::TableHeadersRow();
 
     std::vector<int> order;
@@ -123,7 +125,7 @@ void draw_types(const Statistics &statistics)
             ImGui::TextUnformatted(names[index].c_str());
         }
         else {
-            ImGui::TextColored(kMuted, "id %d", id);
+            ImGui::TextColored(palette().muted, tr("id %d"), id);
         }
         ImGui::TableNextColumn();
         ImGui::Text("%llu", static_cast<unsigned long long>(statistics.counts[index]));
@@ -151,9 +153,9 @@ void draw_lengths(const Statistics &statistics)
         return;
     }
 
-    ImGui::TableSetupColumn("Bytes", ImGuiTableColumnFlags_WidthStretch, 1.2F);
-    ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthStretch, 0.8F);
-    ImGui::TableSetupColumn("Share", ImGuiTableColumnFlags_WidthStretch, 0.8F);
+    ImGui::TableSetupColumn(tr_label("Bytes"), ImGuiTableColumnFlags_WidthStretch, 1.2F);
+    ImGui::TableSetupColumn(tr_label("Count"), ImGuiTableColumnFlags_WidthStretch, 0.8F);
+    ImGui::TableSetupColumn(tr_label("Share"), ImGuiTableColumnFlags_WidthStretch, 0.8F);
     ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 2.5F);
     ImGui::TableHeadersRow();
 
@@ -161,7 +163,7 @@ void draw_lengths(const Statistics &statistics)
         const auto count = statistics.lengths[bucket];
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        ImGui::TextUnformatted(kLengthLabels[bucket]);
+        ImGui::TextUnformatted(tr(kLengthLabels[bucket]));
         ImGui::TableNextColumn();
         ImGui::Text("%llu", static_cast<unsigned long long>(count));
         ImGui::TableNextColumn();
@@ -178,7 +180,7 @@ void draw_lengths(const Statistics &statistics)
 void draw_graph(const Statistics &statistics, const bool by_bytes)
 {
     if (statistics.rates.empty()) {
-        ImGui::TextColored(kMuted, "no packets yet");
+        ImGui::TextColored(palette().muted, tr("no packets yet"));
         return;
     }
 
@@ -197,7 +199,7 @@ void draw_graph(const Statistics &statistics, const bool by_bytes)
 
     const auto columns = statistics.rates.size();
     const auto step = width / static_cast<float>(columns);
-    const auto fill = ImGui::GetColorU32(kFindHit);
+    const auto fill = ImGui::GetColorU32(palette().find_hit);
     for (std::size_t second = 0; second < columns; ++second) {
         const auto value = by_bytes ? static_cast<double>(statistics.rates[second].bytes)
                                     : static_cast<double>(statistics.rates[second].packets);
@@ -207,8 +209,8 @@ void draw_graph(const Statistics &statistics, const bool by_bytes)
                             ImVec2{x + std::max(1.0F, step - 1.0F), origin.y + kGraphHeight - 1.0F}, fill);
     }
 
-    ImGui::TextColored(kMuted, "peak %.0f %s per second over %zu seconds", highest, by_bytes ? "bytes" : "packets",
-                       columns);
+    ImGui::TextColored(palette().muted, tr("peak %.0f %s per second over %zu seconds"), highest,
+                       tr(by_bytes ? "bytes" : "packets"), columns);
 }
 
 }  // namespace
@@ -216,7 +218,7 @@ void draw_graph(const Statistics &statistics, const bool by_bytes)
 void draw_statistics_window(const Capture &capture, ViewOptions &options)
 {
     ImGui::SetNextWindowSize(ImVec2{640.0F, 440.0F}, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Spyglass: statistics", &options.statistics_window)) {
+    if (!ImGui::Begin(tr_label("Spyglass: statistics"), &options.statistics_window)) {
         ImGui::End();
         return;
     }
@@ -229,20 +231,20 @@ void draw_statistics_window(const Capture &capture, ViewOptions &options)
                                                                                  : ImGuiTabItemFlags_None;
         };
 
-        if (ImGui::BeginTabItem("Capture Properties", nullptr, tab(StatisticsTab::Properties))) {
+        if (ImGui::BeginTabItem(tr_label("Capture Properties"), nullptr, tab(StatisticsTab::Properties))) {
             draw_properties(statistics);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Packet Types", nullptr, tab(StatisticsTab::Types))) {
+        if (ImGui::BeginTabItem(tr_label("Packet Types"), nullptr, tab(StatisticsTab::Types))) {
             draw_types(statistics);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Packet Lengths", nullptr, tab(StatisticsTab::Lengths))) {
+        if (ImGui::BeginTabItem(tr_label("Packet Lengths"), nullptr, tab(StatisticsTab::Lengths))) {
             draw_lengths(statistics);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("I/O Graph", nullptr, tab(StatisticsTab::Graph))) {
-            ImGui::Checkbox("bytes per second", &options.graph_bytes);
+        if (ImGui::BeginTabItem(tr_label("I/O Graph"), nullptr, tab(StatisticsTab::Graph))) {
+            ImGui::Checkbox(tr_label("bytes per second"), &options.graph_bytes);
             draw_graph(statistics, options.graph_bytes);
             ImGui::EndTabItem();
         }

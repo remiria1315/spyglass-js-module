@@ -1,4 +1,5 @@
 #include "spyglass/overlay/pane/filter_window.h"
+#include "spyglass/overlay/i18n.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,7 +19,7 @@ namespace spyglass {
 void draw_filter_window(const Capture &capture, Filter &filter, FilterWindow &window, bool &open)
 {
     ImGui::SetNextWindowSize(ImVec2{420.0F, 520.0F}, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Spyglass: filter", &open)) {
+    if (!ImGui::Begin(tr_label("Spyglass: filter"), &open)) {
         ImGui::End();
         return;
     }
@@ -30,14 +31,14 @@ void draw_filter_window(const Capture &capture, Filter &filter, FilterWindow &wi
         filter.enabled.resize(bound, 1);
     }
 
-    ImGui::Checkbox("Failed decodes only", &filter.bad_only);
-    ImGui::Checkbox("Received", &filter.inbound);
+    ImGui::Checkbox(tr_label("Failed decodes only"), &filter.bad_only);
+    ImGui::Checkbox(tr_label("Received"), &filter.inbound);
     ImGui::SameLine();
-    ImGui::Checkbox("Sent", &filter.outbound);
+    ImGui::Checkbox(tr_label("Sent"), &filter.outbound);
     ImGui::Separator();
 
     ImGui::SetNextItemWidth(180.0F);
-    ImGui::InputTextWithHint("##find", "find a packet", window.find, sizeof(window.find));
+    ImGui::InputTextWithHint("##find", tr("find a packet"), window.find, sizeof(window.find));
 
     const std::string_view needle{window.find};
     std::size_t total = 0;
@@ -69,19 +70,19 @@ void draw_filter_window(const Capture &capture, Filter &filter, FilterWindow &wi
     }
 
     ImGui::SameLine();
-    if (ImGui::Button("All")) {
+    if (ImGui::Button(tr_label("All"))) {
         for (const auto &row : window.rows) {
             filter.allow(row.id, true);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("None")) {
+    if (ImGui::Button(tr_label("None"))) {
         for (const auto &row : window.rows) {
             filter.allow(row.id, false);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Invert")) {
+    if (ImGui::Button(tr_label("Invert"))) {
         for (const auto &row : window.rows) {
             filter.allow(row.id, !filter.allowed(row.id));
         }
@@ -92,9 +93,10 @@ void draw_filter_window(const Capture &capture, Filter &filter, FilterWindow &wi
     const auto footer = ImGui::GetFrameHeightWithSpacing();
     if (ImGui::BeginTable("types", 3, flags, ImVec2{-1.0F, -footer})) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Id", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort, 44.0F);
-        ImGui::TableSetupColumn("Packet", ImGuiTableColumnFlags_WidthStretch);
-        ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed, 72.0F);
+        ImGui::TableSetupColumn(tr_label("Id"), ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort,
+                                44.0F);
+        ImGui::TableSetupColumn(tr_label("Packet"), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(tr_label("Count"), ImGuiTableColumnFlags_WidthFixed, 72.0F);
         ImGui::TableHeadersRow();
 
         if (const auto *specs = ImGui::TableGetSortSpecs(); specs != nullptr && specs->SpecsCount > 0) {
@@ -129,7 +131,7 @@ void draw_filter_window(const Capture &capture, Filter &filter, FilterWindow &wi
                 ImGui::PushID(row.id);
                 char label[128];
                 if (row.name == nullptr) {
-                    std::snprintf(label, sizeof(label), "id %d", row.id);
+                    std::snprintf(label, sizeof(label), tr("id %d"), row.id);
                 }
                 else {
                     std::snprintf(label, sizeof(label), "%s", row.name->c_str());
@@ -148,13 +150,13 @@ void draw_filter_window(const Capture &capture, Filter &filter, FilterWindow &wi
     }
 
     if (needle.empty()) {
-        ImGui::TextColored(kMuted, "%zu packets, %zu hidden", total, hidden);
+        ImGui::TextColored(palette().muted, tr("%zu packets, %zu hidden"), total, hidden);
     }
     else {
-        ImGui::TextColored(kMuted, "%zu of %zu match, %zu hidden", window.rows.size(), total, hidden);
+        ImGui::TextColored(palette().muted, tr("%zu of %zu match, %zu hidden"), window.rows.size(), total, hidden);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Reset")) {
+    if (ImGui::Button(tr_label("Reset"))) {
         std::fill(filter.enabled.begin(), filter.enabled.end(), std::uint8_t{1});
         filter.bad_only = false;
         filter.inbound = true;
